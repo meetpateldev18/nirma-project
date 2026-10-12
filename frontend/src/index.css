@@ -3,8 +3,8 @@
 
 @layer base {
   body {
-    background-color: #EEF1F6;
-    color: #16254D;
+    background-color: #F4F4F5;
+    color: #1F2430;
     font-family: 'Inter', system-ui, -apple-system, 'Noto Sans Gujarati', 'Noto Sans Devanagari', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1, "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
@@ -19,7 +19,7 @@
 
   /* Accessible focus indicators conforming to WCAG 2.2 AA (Criterion 2.4.7) */
   :focus-visible {
-    outline: 2px solid #E06D3B;
+    outline: 2px solid #2F5BEA;
     outline-offset: 2px;
   }
 }

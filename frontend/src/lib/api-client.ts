@@ -149,6 +149,23 @@ export async function login(email: string, password: string): Promise<StoredToke
   return tokens;
 }
 
+export interface StaffUser {
+  id: number;
+  email: string;
+  name: string;
+  role: 'admin' | 'operator';
+  is_active: boolean;
+  created_at: string;
+}
+
+export const listUsers = () => request<StaffUser[]>('/auth/users');
+
+export const createUser = (payload: { name: string; email: string; password: string; role: 'admin' | 'operator' }) =>
+  request<StaffUser>('/auth/users', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateUser = (id: number, payload: { is_active?: boolean; password?: string }) =>
+  request<StaffUser>(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+
 export function logout(): void {
   saveStoredTokens(null);
 }

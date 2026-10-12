@@ -151,7 +151,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                   {/* Active turn snippet or waveform */}
                   {isLive && (
                     <div className="mt-2.5 pt-2 border-t border-hairline-subtle flex items-center justify-between text-[11px]">
-                      <div className="flex items-center space-x-1.5 text-telemetry-cyan font-mono truncate max-w-[280px]">
+                      <div className="flex items-center space-x-1.5 text-telemetry-cyan font-mono truncate max-w-full sm:max-w-[280px]">
                         <Volume2 className="w-3.5 h-3.5 inline shrink-0" aria-hidden="true" />
                         <span className="truncate">{task.current_turn}</span>
                       </div>

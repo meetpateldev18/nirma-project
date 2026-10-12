@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAuth } from '@/lib/auth-context';
 import * as api from '@/lib/api-client';
 import type { StudentSearchResult, GeneratedScript } from '@/lib/api-client';
 import { CallCampaign } from '@/services/api';
@@ -33,8 +32,6 @@ const LANGUAGES: { value: string; label: string }[] = [
 type Mode = 'individual' | 'group';
 
 export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavigateToTelemetry }) => {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
 
   const [mode, setMode] = useState<Mode>('individual');
 
@@ -157,22 +154,22 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
             <span className="font-mono text-[11px] tracking-[.14em] uppercase text-primary font-bold">
               Nirma University · Call Agent
             </span>
-            <h1 className="font-serif text-4xl font-bold text-navy mt-1 leading-tight">Start a call</h1>
+            <h1 className="font-serif text-3xl sm:text-4xl font-bold text-navy mt-1 leading-tight">Start a call</h1>
             <p className="text-navy-soft text-sm mt-1 max-w-md">
-              Reach one person or a whole batch. Type the reason — the AI writes its own script and stays on topic.
+              Call one student or a whole group. Say why, and the AI writes the script.
             </p>
           </div>
         </div>
 
         {/* Section 1 — Who & why */}
-        <section className="bg-paper-raised border border-paperline rounded-2xl shadow-sm p-6 space-y-6">
+        <section className="bg-paper-raised border border-paperline rounded-2xl shadow-sm p-4 sm:p-6 space-y-6">
           <div className="flex items-center gap-3">
             <span className="w-7 h-7 rounded-full bg-primary/10 text-primary font-mono font-bold text-sm flex items-center justify-center shrink-0">1</span>
             <h2 className="font-serif text-xl font-semibold text-navy">Who, and why</h2>
           </div>
 
           {/* Mode toggle */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setMode('individual')}
@@ -247,7 +244,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-navy-soft">Department</label>
                 <Select value={department} onValueChange={setDepartment}>
@@ -281,10 +278,10 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
               placeholder="e.g. Remind them their semester 5 tuition fee is due on 15 October, and ask when they plan to pay."
               className="w-full px-3.5 py-2.5 rounded-lg border border-paperline bg-white text-sm text-navy placeholder:text-navy-mute resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
-            <p className="text-[11px] text-navy-mute">Any reason works — the AI writes a script for exactly this, and won't wander onto other topics.</p>
+            <p className="text-[11px] text-navy-mute"></p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-navy-soft">Language</label>
               <Select value={language} onValueChange={setLanguage}>
@@ -323,7 +320,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
 
         {/* Section 2 — Preview & launch */}
         {generated && (
-          <section className="bg-paper-raised border border-paperline rounded-2xl shadow-sm p-6 space-y-5">
+          <section className="bg-paper-raised border border-paperline rounded-2xl shadow-sm p-4 sm:p-6 space-y-5">
             <div className="flex items-center gap-3">
               <span className="w-7 h-7 rounded-full bg-primary/10 text-primary font-mono font-bold text-sm flex items-center justify-center shrink-0">2</span>
               <h2 className="font-serif text-xl font-semibold text-navy">Preview, then launch</h2>
@@ -346,12 +343,6 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                 : <span className="font-semibold">Everyone active in {department}{semester !== 'any' ? `, Semester ${semester}` : ''}</span>}
             </div>
 
-            {!isAdmin && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Launching needs an administrator account — you're signed in as an operator. Ask an admin to launch this.
-              </p>
-            )}
-
             <div className="flex gap-3">
               <Button type="button" variant="outline" onClick={handleGenerate} disabled={isGenerating} className="border-paperline-strong text-navy">
                 Regenerate
@@ -359,7 +350,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
               <Button
                 type="button"
                 onClick={handleLaunch}
-                disabled={!isAdmin || isLaunching}
+                disabled={isLaunching}
                 className="flex-1 bg-primary hover:bg-primary-hover text-white h-11 font-semibold"
               >
                 <PhoneCall className="w-4 h-4 mr-2" />

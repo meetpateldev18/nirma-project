@@ -1,28 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  Search, 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Volume2, 
-  User, 
-  Bot
-} from 'lucide-react';
+import { Search, Play, Pause, RotateCcw, Phone, Bot, User, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
 import { type CallTask, CallLog } from '@/services/api';
+import { useAuth } from '@/lib/auth-context';
 import { getCallTranscript, retryCallTask } from '@/lib/api-client';
 
 interface TranscriptViewProps {
@@ -30,356 +14,210 @@ interface TranscriptViewProps {
   onTaskRetried: () => void;
 }
 
+const initialsOf = (name: string) =>
+  name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
+
+const AVATAR_TONES = ['bg-rose-100 text-rose-700', 'bg-amber-100 text-amber-700', 'bg-emerald-100 text-emerald-700', 'bg-sky-100 text-sky-700', 'bg-violet-100 text-violet-700'];
+const toneFor = (id: number) => AVATAR_TONES[id % AVATAR_TONES.length];
+
+const Avatar: React.FC<{ name: string; id: number; size?: string }> = ({ name, id, size = 'w-11 h-11 text-sm' }) => (
+  <div className={`${size} rounded-full flex items-center justify-center font-semibold shrink-0 ${toneFor(id)}`}>{initialsOf(name)}</div>
+);
+
+const STATUS_LABEL: Record<string, string> = {
+  completed: 'Completed',
+  in_progress: 'Ongoing',
+  ringing: 'Ringing',
+  pending: 'Waiting',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+const StatusPill: React.FC<{ status: string }> = ({ status }) => {
+  const tone =
+    status === 'completed' ? 'bg-emerald-50 text-emerald-700'
+    : status === 'in_progress' ? 'bg-amber-50 text-amber-700'
+    : status === 'failed' ? 'bg-red-50 text-red-600'
+    : 'bg-canvas-elevated text-body';
+  return <span className={`px-3 py-1 rounded-full text-xs font-medium ${tone}`}>{STATUS_LABEL[status] ?? status}</span>;
+};
+
 export const TranscriptView: React.FC<TranscriptViewProps> = React.memo(({ tasks, onTaskRetried }) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [activeLog, setActiveLog] = useState<CallLog | null>(null);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
 
   const filteredTasks = React.useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return tasks;
-    return tasks.filter(task =>
-      task.student_name.toLowerCase().includes(term) ||
-      task.student_roll.toLowerCase().includes(term) ||
-      task.student_phone.includes(term)
+    return tasks.filter((t) =>
+      t.student_name.toLowerCase().includes(term) ||
+      t.student_roll.toLowerCase().includes(term) ||
+      t.student_phone.includes(term)
     );
   }, [tasks, searchTerm]);
 
-  const selectedTask = React.useMemo(() => {
-    return tasks.find(t => t.id === selectedTaskId) || tasks[0];
-  }, [tasks, selectedTaskId]);
+  const selectedTask = React.useMemo(() => tasks.find((t) => t.id === selectedTaskId), [tasks, selectedTaskId]);
+
+  // On wide screens something is always open; on phones the list shows first.
+  const detailTask = selectedTask ?? (typeof window !== 'undefined' && window.innerWidth >= 1024 ? tasks[0] : undefined);
 
   React.useEffect(() => {
-    if (!selectedTask) {
+    if (!detailTask) {
       setActiveLog(null);
       return;
     }
     let cancelled = false;
     setIsLoadingLog(true);
-    getCallTranscript(selectedTask.id)
+    getCallTranscript(detailTask.id)
       .then((log) => { if (!cancelled) setActiveLog(log); })
       .catch(() => { if (!cancelled) setActiveLog(null); })
       .finally(() => { if (!cancelled) setIsLoadingLog(false); });
     return () => { cancelled = true; };
-  }, [selectedTask?.id]);
-
-  const togglePlayAudio = React.useCallback(() => {
-    if (!selectedTask) return;
-    setIsPlaying(prev => {
-      const nextState = !prev;
-      if (nextState) {
-        toast.info(`Playing call recording for ${selectedTask.student_name}`, {
-          description: `Source: audio archive (${selectedTask.duration_sec ?? 0}s connected duration)`
-        });
-      }
-      return nextState;
-    });
-  }, [selectedTask]);
+  }, [detailTask?.id]);
 
   const handleManualRetry = React.useCallback((task: CallTask) => {
     toast.promise(retryCallTask(task.id), {
-      loading: `Queueing manual PSTN retry for ${task.student_phone}...`,
-      success: () => {
-        onTaskRetried();
-        return `Call task #${task.id} reset to pending. Carrier dial dispatched.`;
-      },
-      error: (err) => (err instanceof Error ? err.message : 'Failed to reset task'),
+      loading: 'Queueing the call again…',
+      success: () => { onTaskRetried(); return 'Call queued again.'; },
+      error: (err) => (err instanceof Error ? err.message : 'Could not retry'),
     });
   }, [onTaskRetried]);
 
-  return (
-    <div id="panel-transcripts" role="tabpanel" aria-labelledby="tab-transcripts" className="space-y-6">
-      {/* View Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-hairline pb-5">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-ink font-sans">
-              Conversation Transcripts & Audio Inspector
-            </h1>
-            <Badge variant="mono" className="text-[10px]">
-              AUDIT COMPLIANT
-            </Badge>
-          </div>
-          <p className="text-xs text-body mt-1">
-            Review multi-turn speech transcripts, provider attribution, and conversational latencies for all completed calls
-          </p>
-        </div>
+  const showDetailOnMobile = !!selectedTask;
+  const duration = detailTask?.duration_sec ?? 0;
+  const mmss = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`;
 
-        {/* Search Input */}
-        <div className="relative w-full sm:w-72">
-          <label htmlFor="transcript-search-input" className="sr-only">
-            Search call archive by student name, roll number, or phone number
-          </label>
-          <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-mute" aria-hidden="true" />
-          <Input 
-            id="transcript-search-input"
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,360px)_1fr] gap-4 lg:gap-6 lg:h-[calc(100vh-4rem)]">
+      {/* Left: call list */}
+      <Card className={`${showDetailOnMobile ? 'hidden lg:flex' : 'flex'} flex-col p-4 sm:p-5 min-h-0`}>
+        <h1 className="text-2xl font-semibold text-ink">Transcripts</h1>
+        <div className="relative mt-4">
+          <Search className="w-4 h-4 absolute left-3.5 top-3 text-mute" aria-hidden="true" />
+          <label htmlFor="transcript-search" className="sr-only">Search calls</label>
+          <Input
+            id="transcript-search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search roll, name, or phone..."
-            className="pl-9 bg-canvas-soft border-hairline text-xs"
+            placeholder="Search"
+            className="pl-10"
           />
         </div>
-      </div>
 
-      {/* Main Grid: Left Tasks Table (5 cols) | Right Transcript & Audio Console (7 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Call Records Table */}
-        <div className="lg:col-span-5">
-          <Card className="bg-canvas-soft border-hairline overflow-hidden">
-            <CardHeader className="p-4 border-b border-hairline">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-mono font-semibold uppercase tracking-wider text-body">
-                  CALL LOG ARCHIVE
-                </CardTitle>
-                <Badge variant="mono" className="text-[10px] tabular-nums">
-                  {filteredTasks.length} Records
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <caption className="sr-only">Historical Outbound Call Logs Archive</caption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead scope="col">STUDENT</TableHead>
-                    <TableHead scope="col">STATUS</TableHead>
-                    <TableHead scope="col" className="text-right">DURATION</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTasks.map((task) => {
-                    const isSelected = task.id === selectedTaskId;
-                    return (
-                      <TableRow 
-                        key={task.id}
-                        tabIndex={0}
-                        role="button"
-                        aria-pressed={isSelected}
-                        aria-label={`Select call log for ${task.student_name}, roll ${task.student_roll}`}
-                        onClick={() => setSelectedTaskId(task.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setSelectedTaskId(task.id);
-                          }
-                        }}
-                        className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                          isSelected 
-                            ? 'bg-canvas-elevated border-l-2 border-l-primary' 
-                            : 'hover:bg-canvas-elevated/40'
-                        }`}
-                      >
-                        <TableCell className="py-3">
-                          <div className="font-semibold text-xs text-ink">{task.student_name}</div>
-                          <div className="text-[11px] font-mono text-mute tabular-nums">{task.student_roll} • {task.student_phone}</div>
-                        </TableCell>
-                        <TableCell className="py-3">
-                          <Badge 
-                            variant={
-                              task.status === 'completed' ? 'secondary' : 
-                              task.status === 'in_progress' ? 'live' : 
-                              task.status === 'ringing' ? 'ringing' : 'destructive'
-                            }
-                            className="text-[10px] font-mono uppercase"
-                          >
-                            {task.outcome || task.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs tabular-nums text-ink py-3">
-                          {task.duration_sec ? `${task.duration_sec}s` : '0s'}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column: Audio Player & Turn-by-Turn Transcript */}
-        <div className="lg:col-span-7 space-y-5">
-          {!selectedTask ? (
-            <Card className="bg-canvas-soft border-hairline flex items-center justify-center min-h-[300px]">
-              <p className="text-xs text-mute font-mono">No call records yet. Launch a campaign to generate call logs.</p>
-            </Card>
-          ) : (
-          <>
-          {/* Audio Player Card */}
-          <Card className="bg-canvas-elevated border-hairline-strong shadow-lg">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-ink">{selectedTask.student_name}</div>
-                  <div className="text-xs text-mute font-mono">
-                    Call Record #{selectedTask.id} • Plivo UUID: {selectedTask.plivo_uuid}
+        <ul className="mt-3 flex-1 overflow-y-auto -mx-2 divide-y divide-hairline">
+          {filteredTasks.length === 0 && (
+            <li className="px-3 py-8 text-center text-sm text-mute">No calls yet.</li>
+          )}
+          {filteredTasks.map((t) => {
+            const active = t.id === detailTask?.id;
+            return (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTaskId(t.id)}
+                  aria-pressed={active}
+                  className={`w-full flex items-center gap-3 px-3 py-3 text-left transition-colors rounded-xl ${active ? 'bg-emerald-50' : 'hover:bg-canvas-elevated'}`}
+                >
+                  <Avatar name={t.student_name} id={t.student_id} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-ink truncate">{t.student_name}</div>
+                    <div className="text-xs text-mute truncate">{t.student_roll}</div>
                   </div>
-                </div>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.status === 'completed' ? 'bg-emerald-500' : t.status === 'failed' ? 'bg-red-500' : 'bg-amber-400'}`} aria-label={STATUS_LABEL[t.status] ?? t.status} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
 
-                {selectedTask.status === 'failed' && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleManualRetry(selectedTask)}
-                    className="border-primary/40 text-primary hover:bg-primary/10 text-xs h-7"
-                  >
-                    <RotateCcw className="w-3 h-3 mr-1" />
-                    Retry Call
+      {/* Right: detail */}
+      <div className={`${showDetailOnMobile ? 'flex' : 'hidden lg:flex'} flex-col gap-4 min-h-0 lg:overflow-y-auto`}>
+        {!detailTask ? (
+          <Card className="flex-1 flex items-center justify-center min-h-[300px] text-sm text-mute">
+            Pick a call to read its transcript.
+          </Card>
+        ) : (
+          <>
+            <Card className="p-4 sm:p-6">
+              <button
+                type="button"
+                onClick={() => setSelectedTaskId(null)}
+                className="lg:hidden mb-3 inline-flex items-center gap-1.5 text-sm text-primary"
+              >
+                <ArrowLeft className="w-4 h-4" /> All calls
+              </button>
+              <div className="flex flex-wrap items-center gap-4">
+                <Avatar name={detailTask.student_name} id={detailTask.student_id} size="w-16 h-16 text-xl" />
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-2xl font-semibold text-ink truncate">{detailTask.student_name}</h2>
+                  <div className="text-body text-sm mt-0.5">{detailTask.student_phone}</div>
+                </div>
+                {isAdmin && detailTask.status === 'failed' && (
+                  <Button onClick={() => handleManualRetry(detailTask)} className="bg-live-pulse hover:bg-live-pulse-soft">
+                    <RotateCcw className="w-4 h-4 mr-1.5" /> Call again
                   </Button>
                 )}
               </div>
+              <dl className="mt-5 grid grid-cols-[88px_1fr] gap-y-2 text-sm">
+                <dt className="text-body">Roll no.</dt><dd className="text-ink">{detailTask.student_roll}</dd>
+                <dt className="text-body">Status</dt><dd><StatusPill status={detailTask.status} /></dd>
+                <dt className="text-body">Length</dt><dd className="text-ink">{mmss}</dd>
+              </dl>
+            </Card>
 
-              {/* Waveform & Timeline Slider */}
-              <div className="p-3.5 rounded-md bg-canvas-soft border border-hairline space-y-3">
-                <div className="flex items-center justify-between text-xs font-mono text-mute">
-                  <div className="flex items-center space-x-1.5 text-ink">
-                    <Volume2 className="w-3.5 h-3.5 text-primary" />
-                    <span>Carrier Audio Track (8kHz mono)</span>
-                  </div>
-                  <div className="tabular-nums">
-                    00:00 / 00:{String(selectedTask.duration_sec ?? 0).padStart(2, '0')}
-                  </div>
-                </div>
-
-                {/* Animated Waveform Visualization */}
-                <div className="h-8 flex items-center justify-between space-x-1 px-1">
-                  {Array.from({ length: 36 }).map((_, i) => {
-                    const heights = [6, 12, 18, 24, 10, 16, 28, 20, 8, 14, 22, 16, 26, 12, 18, 8];
-                    const height = heights[i % heights.length];
-                    const isPassed = i < 14;
-                    return (
-                      <div 
-                        key={i} 
-                        className={`w-1 rounded-full transition-all ${
-                          isPassed ? 'bg-primary' : 'bg-canvas-elevated'
-                        }`} 
-                        style={{ height: `${height}px` }} 
-                      />
-                    );
-                  })}
-                </div>
-
-                {/* Audio Controls */}
-                <div className="flex items-center justify-between pt-1">
-                  <div className="flex items-center space-x-2">
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      onClick={togglePlayAudio}
-                      aria-label={isPlaying ? "Pause call recording" : "Play call recording"}
-                      className="h-8 px-3 rounded-full bg-primary"
-                    >
-                      {isPlaying ? <Pause className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> : <Play className="w-3.5 h-3.5 mr-1" aria-hidden="true" />}
-                      <span>{isPlaying ? 'Pause' : 'Play Audio'}</span>
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center space-x-1" role="group" aria-label="Audio Playback Speed">
-                    {[1, 1.25, 1.5].map((speed) => (
-                      <button
-                        key={speed}
-                        type="button"
-                        aria-pressed={playbackSpeed === speed}
-                        aria-label={`${speed}x speed`}
-                        onClick={() => setPlaybackSpeed(speed)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                          playbackSpeed === speed 
-                            ? 'bg-primary text-white border-primary shadow-sm' 
-                            : 'bg-canvas-elevated text-mute border-hairline hover:text-ink'
-                        }`}
-                      >
-                        {speed}x
-                      </button>
-                    ))}
-                  </div>
+            <Card className="p-4 sm:p-5">
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPlaying((p) => !p);
+                    toast.info('Audio playback is not connected yet.');
+                  }}
+                  aria-label={isPlaying ? 'Pause recording' : 'Play recording'}
+                  className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center shrink-0"
+                >
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                </button>
+                <div className="flex-1">
+                  <div className="h-1.5 rounded-full bg-canvas-elevated" />
+                  <div className="flex justify-between text-xs text-body mt-1.5 tabular-nums"><span>0:00</span><span>{mmss}</span></div>
                 </div>
               </div>
+            </Card>
 
-              {/* AI Engine Attribution Card */}
-              <div className="grid grid-cols-3 gap-2.5 p-3 rounded-md bg-canvas-soft border border-hairline text-xs font-mono">
-                <div>
-                  <div className="text-[10px] text-mute uppercase">STT Engine</div>
-                  <div className="text-ink font-semibold truncate">{activeLog?.stt_provider ?? '—'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-mute uppercase">LLM Engine</div>
-                  <div className="text-ink font-semibold truncate">{activeLog?.llm_provider ?? '—'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-mute uppercase">TTS Engine</div>
-                  <div className="text-ink font-semibold truncate">{activeLog?.tts_provider ?? '—'}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Full Turn Dialogue Bubble Stream */}
-          <Card className="bg-canvas-soft border-hairline">
-            <CardHeader className="p-4 border-b border-hairline">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-mono font-semibold uppercase tracking-wider text-body">
-                  FULL MULTI-TURN TRANSCRIPT
-                </CardTitle>
-                <span className="text-xs font-mono text-mute">
-                  Average Turn Latency: <strong className="text-live-pulse tabular-nums">{activeLog?.avg_latency_ms ?? 0} ms</strong>
-                </span>
-              </div>
-            </CardHeader>
-            <CardContent className="p-5 space-y-4 max-h-[420px] overflow-y-auto" role="log" aria-label="Conversation turn-by-turn dialogue history">
-              {isLoadingLog && <p className="text-xs text-mute font-mono">Loading transcript...</p>}
-              {!isLoadingLog && !activeLog && (
-                <p className="text-xs text-mute font-mono">No transcript recorded for this call.</p>
-              )}
-              {activeLog?.transcript.map((turn, index) => {
-                const isAssistant = turn.role === 'assistant';
-                return (
-                  <div 
-                    key={index} 
-                    className={`flex flex-col ${isAssistant ? 'items-start' : 'items-end'}`}
-                  >
-                    <div className="flex items-center space-x-1.5 mb-1 text-[11px] font-mono text-mute">
-                      <span className="flex items-center space-x-1 text-ink font-medium">
-                        {isAssistant ? (
-                          <>
-                            <Bot className="w-3 h-3 text-primary inline" aria-hidden="true" />
-                            <span>AI Caller (Nirma University)</span>
-                          </>
-                        ) : (
-                          <>
-                            <User className="w-3 h-3 text-telemetry-cyan inline" aria-hidden="true" />
-                            <span>Recipient Speech</span>
-                          </>
-                        )}
-                      </span>
-                      <span>•</span>
-                      <span className="tabular-nums">{turn.timestamp}</span>
-                      {turn.latency_ms && (
-                        <span className="text-live-pulse font-semibold tabular-nums">
-                          [{turn.latency_ms} ms turnaround]
-                        </span>
-                      )}
+            <h3 className="text-lg font-semibold text-ink px-1 mt-1">Conversation</h3>
+            {isLoadingLog && <p className="text-sm text-mute px-1">Loading…</p>}
+            {!isLoadingLog && !activeLog && <p className="text-sm text-mute px-1">No transcript was recorded for this call.</p>}
+            {activeLog?.transcript.map((turn, i) => {
+              const ai = turn.role === 'assistant';
+              return (
+                <Card key={i} className="p-4 sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${ai ? 'bg-primary/10 text-primary' : 'bg-sky-100 text-sky-700'}`}>
+                      {ai ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
                     </div>
-
-                    <div
-                      className={`max-w-[85%] rounded-md p-3.5 text-xs leading-relaxed border ${
-                        isAssistant
-                          ? 'bg-live-pulse/5 border-live-pulse/20 text-ink shadow-sm'
-                          : 'bg-canvas-elevated border-hairline text-ink'
-                      }`}
-                    >
-                      {turn.text}
+                    <div className="min-w-0">
+                      <p className="text-sm text-ink leading-relaxed">{turn.text}</p>
+                      <div className="mt-2 flex items-center gap-3 text-xs text-mute">
+                        <span>{ai ? 'AI caller' : 'Student'}</span>
+                        <span className="tabular-nums">{turn.timestamp}</span>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+                </Card>
+              );
+            })}
+            {detailTask.status === 'completed' && !activeLog && !isLoadingLog && (
+              <Card className="p-4 text-sm text-mute flex items-center gap-2"><Phone className="w-4 h-4" />Call finished with no spoken text.</Card>
+            )}
           </>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

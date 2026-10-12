@@ -147,6 +147,8 @@ async def list_campaigns(
 ) -> PaginatedCampaigns:
     """Returns a paginated list of campaigns filtered by status."""
     query = select(CallCampaign)
+    if current_user.role != "admin":
+        query = query.where(CallCampaign.created_by == current_user.id)
     if status_filter:
         query = query.where(CallCampaign.status == status_filter)
 
@@ -168,9 +170,9 @@ async def list_campaigns(
 async def create_campaign(
     payload: CampaignCreateRequest,
     session: AsyncSession = Depends(get_async_session),
-    current_user: StaffUser = Depends(require_admin),
+    current_user: StaffUser = Depends(get_current_user),
 ) -> CampaignResponse:
-    """Creates a campaign and generates CallTask records for matching students (Admin required)."""
+    """Creates a campaign and generates CallTask records for matching students."""
     # Verify script exists
     script_res = await session.execute(select(CallScript).where(CallScript.id == payload.script_id))
     script = script_res.scalar_one_or_none()
@@ -281,7 +283,8 @@ async def list_campaign_tasks(
 ) -> PaginatedCampaignTasks:
     """Returns a paginated, student-enriched breakdown of a campaign's call tasks."""
     campaign_res = await session.execute(select(CallCampaign).where(CallCampaign.id == campaign_id))
-    if not campaign_res.scalar_one_or_none():
+    owned = campaign_res.scalar_one_or_none()
+    if not owned or (current_user.role != "admin" and owned.created_by != current_user.id):
         raise HTTPException(status_code=404, detail="Campaign not found.")
 
     count_stmt = select(func.count()).select_from(
@@ -330,7 +333,7 @@ async def get_campaign(
     """Returns detailed campaign metadata and task status summary."""
     res = await session.execute(select(CallCampaign).where(CallCampaign.id == campaign_id))
     campaign = res.scalar_one_or_none()
-    if not campaign:
+    if not campaign or (current_user.role != "admin" and campaign.created_by != current_user.id):
         raise HTTPException(status_code=404, detail="Campaign not found.")
 
     # Calculate status counts

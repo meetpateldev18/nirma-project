@@ -199,3 +199,78 @@ async def refresh_token(
 async def get_me(current_user: StaffUser = Depends(get_current_user)) -> StaffUser:
     """Returns profile information for the authenticated staff user."""
     return current_user
+
+
+# ------------------------------------------------------------------------------
+# Admin: Faculty Account Management (accounts are provisioned offline by an admin)
+# ------------------------------------------------------------------------------
+class UserCreateRequest(BaseModel):
+    """Payload for an admin creating a faculty (operator) or admin account."""
+    name: str = Field(..., min_length=2, max_length=100)
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=72)
+    role: str = Field("operator", pattern="^(admin|operator)$")
+
+
+class UserUpdateRequest(BaseModel):
+    """Payload for an admin enabling/disabling an account or resetting its password."""
+    is_active: Optional[bool] = None
+    password: Optional[str] = Field(None, min_length=8, max_length=72)
+
+
+@router.get("/users", response_model=list[StaffUserResponse])
+async def list_users(
+    _: StaffUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[StaffUser]:
+    """Lists every staff account (Admin required)."""
+    result = await session.execute(select(StaffUser).order_by(StaffUser.created_at.desc()))
+    return list(result.scalars().all())
+
+
+@router.post("/users", response_model=StaffUserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    payload: UserCreateRequest,
+    admin: StaffUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session),
+) -> StaffUser:
+    """Grants portal access to a new faculty member (Admin required)."""
+    existing = await session.execute(select(StaffUser).where(StaffUser.email == payload.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+    user = StaffUser(
+        email=payload.email,
+        name=payload.name.strip(),
+        role=payload.role,
+        password_hash=get_password_hash(payload.password),
+        is_active=True,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    logger.info("Account '%s' (%s) created by admin %s", user.email, user.role, admin.email)
+    return user
+
+
+@router.patch("/users/{user_id}", response_model=StaffUserResponse)
+async def update_user(
+    user_id: int,
+    payload: UserUpdateRequest,
+    admin: StaffUser = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session),
+) -> StaffUser:
+    """Enables/disables an account or resets its password (Admin required)."""
+    result = await session.execute(select(StaffUser).where(StaffUser.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if user.id == admin.id and payload.is_active is False:
+        raise HTTPException(status_code=400, detail="You cannot disable your own account.")
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    if payload.password:
+        user.password_hash = get_password_hash(payload.password)
+    await session.commit()
+    await session.refresh(user)
+    logger.info("Account '%s' updated by admin %s", user.email, admin.email)
+    return user

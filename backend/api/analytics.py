@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_user
+from backend.api.auth import require_admin
 from backend.database.models import CallCampaign, CallLog, CallTask, StaffUser
 from backend.database.session import get_async_session
 
@@ -84,7 +84,7 @@ class LatencyPercentileMetric(BaseModel):
     summary="Get executive dashboard KPIs",
 )
 async def get_dashboard_summary(
-    current_user: StaffUser = Depends(get_current_user),
+    current_user: StaffUser = Depends(require_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> DashboardSummaryResponse:
     """
@@ -149,7 +149,7 @@ async def get_dashboard_summary(
 )
 async def get_daily_volume(
     days: int = 14,
-    current_user: StaffUser = Depends(get_current_user),
+    current_user: StaffUser = Depends(require_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> List[DailyVolumeMetric]:
     """
@@ -198,7 +198,7 @@ async def get_daily_volume(
     summary="Get call outcome disposition distribution",
 )
 async def get_outcome_distribution(
-    current_user: StaffUser = Depends(get_current_user),
+    current_user: StaffUser = Depends(require_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> OutcomeDistributionResponse:
     """
@@ -228,7 +228,7 @@ async def get_outcome_distribution(
     summary="Get AI pipeline latency metrics and provider usage stats",
 )
 async def get_latency_metrics(
-    current_user: StaffUser = Depends(get_current_user),
+    current_user: StaffUser = Depends(require_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> LatencyPercentileMetric:
     """

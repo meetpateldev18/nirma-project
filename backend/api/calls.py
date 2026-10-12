@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user, require_admin
-from backend.database.models import CallLog, CallTask, StaffUser, utc_now
+from backend.database.models import CallCampaign, CallLog, CallTask, StaffUser, utc_now
 from backend.database.session import get_async_session
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,19 @@ class CallTranscriptResponse(BaseModel):
 # ------------------------------------------------------------------------------
 # Endpoints
 # ------------------------------------------------------------------------------
+async def _assert_task_access(session: AsyncSession, task_id: int, user: StaffUser) -> None:
+    """Non-admin staff may only open calls belonging to campaigns they created."""
+    if user.role == "admin":
+        return
+    res = await session.execute(
+        select(CallCampaign.created_by)
+        .join(CallTask, CallTask.campaign_id == CallCampaign.id)
+        .where(CallTask.id == task_id)
+    )
+    if res.scalar_one_or_none() != user.id:
+        raise HTTPException(status_code=404, detail="Call task not found.")
+
+
 @router.get("/{task_id}", response_model=CallTaskDetailResponse)
 async def get_call_task(
     task_id: int,
@@ -77,6 +90,7 @@ async def get_call_task(
     current_user: StaffUser = Depends(get_current_user),
 ) -> CallTaskDetailResponse:
     """Returns timing and state breakdown for a specific CallTask."""
+    await _assert_task_access(session, task_id, current_user)
     res = await session.execute(select(CallTask).where(CallTask.id == task_id))
     task = res.scalar_one_or_none()
     if not task:
@@ -91,6 +105,7 @@ async def get_call_transcript(
     current_user: StaffUser = Depends(get_current_user),
 ) -> CallTranscriptResponse:
     """Returns the full conversation transcript and AI telemetry for a call task."""
+    await _assert_task_access(session, task_id, current_user)
     res = await session.execute(select(CallLog).where(CallLog.task_id == task_id))
     log = res.scalar_one_or_none()
     if not log:

@@ -10,21 +10,21 @@ export default {
       colors: {
         // Institutional University Brand & Accent
         primary: {
-          DEFAULT: '#E06D3B',
-          hover: '#F08252',
-          deep: '#993416',
+          DEFAULT: '#2F5BEA',
+          hover: '#2449C8',
+          deep: '#1B38A0',
           foreground: '#FFFFFF',
         },
         nirma: {
           navy: '#16254D',
           'navy-soft': '#47547A',
-          terracotta: '#E06D3B',
+          terracotta: '#2F5BEA',
         },
         // Telemetry & Real-Time Voice Stream Accents — deepened from their original
         // dark-canvas values so each still clears WCAG AA as text on a light surface.
         'live-pulse': {
-          DEFAULT: '#047857',
-          soft: '#059669',
+          DEFAULT: '#12A150',
+          soft: '#16A765',
         },
         telemetry: {
           cyan: '#0E7490',
@@ -37,26 +37,26 @@ export default {
         // Canvas & Surface System — light "paper" hierarchy: a soft page ground, white
         // cards/bars raised off it, and a faint recessed tone for nested controls.
         canvas: {
-          DEFAULT: '#EEF1F6',
+          DEFAULT: '#F4F4F5',
           subtle: '#FFFFFF',
           soft: '#FFFFFF',
-          elevated: '#F1F3F8',
+          elevated: '#F3F4F6',
           overlay: 'rgba(22, 37, 77, 0.45)',
         },
         // Hairline Borders & Dividers
         hairline: {
-          DEFAULT: 'rgba(15, 23, 42, 0.10)',
+          DEFAULT: 'rgba(15, 23, 42, 0.07)',
           subtle: 'rgba(15, 23, 42, 0.06)',
           strong: 'rgba(15, 23, 42, 0.16)',
-          terracotta: 'rgba(224, 109, 59, 0.35)',
+          terracotta: 'rgba(47, 91, 234, 0.35)',
         },
         // Text & Content Scale
         ink: {
-          DEFAULT: '#16254D',
-          strong: '#0B1530',
+          DEFAULT: '#1F2430',
+          strong: '#11141C',
         },
-        body: '#47547A',
-        mute: '#8891A6',
+        body: '#5B6270',
+        mute: '#9AA0AB',
         disabled: '#B7BECC',
         // Telecom Call State Semantic Tokens
         state: {
@@ -70,20 +70,20 @@ export default {
         },
         border: 'rgba(15, 23, 42, 0.10)',
         input: 'rgba(15, 23, 42, 0.10)',
-        ring: '#E06D3B',
-        background: '#EEF1F6',
-        foreground: '#16254D',
+        ring: '#2F5BEA',
+        background: '#F4F4F5',
+        foreground: '#1F2430',
         // Aliases kept for the "New Call" flow's editorial styling (serif headlines,
         // warm opening-line callout) — same values as the scale above.
         paper: {
-          DEFAULT: '#EEF1F6',
+          DEFAULT: '#F4F4F5',
           raised: '#FFFFFF',
-          soft: '#F1F3F8',
+          soft: '#F3F4F6',
         },
         navy: {
-          DEFAULT: '#16254D',
-          soft: '#47547A',
-          mute: '#8891A6',
+          DEFAULT: '#1F2430',
+          soft: '#5B6270',
+          mute: '#9AA0AB',
         },
         paperline: {
           DEFAULT: 'rgba(15, 23, 42, 0.10)',

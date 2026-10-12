@@ -9,7 +9,7 @@ import { ApiError } from '@/lib/api-client';
 
 export const LoginView: React.FC = () => {
   const { login } = useAuth();
-  const [email, setEmail] = useState('admin@nirmauni.ac.in');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,28 +28,28 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center px-4 font-sans antialiased">
-      <div className="w-full max-w-sm space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-primary via-[#5B82F2] to-[#BCCBFA] flex items-center justify-center px-4 py-8 font-sans antialiased">
+      <div className="w-full max-w-sm space-y-6 bg-white rounded-3xl p-6 sm:p-8 shadow-xl">
         <div className="flex flex-col items-center space-y-2">
-          <div className="w-12 h-12 rounded-md bg-gradient-to-br from-primary to-primary-deep flex items-center justify-center shadow-lg shadow-orange-950/40 border border-orange-400/20">
+          <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
             <PhoneCall className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-lg font-semibold text-ink tracking-tight">NIRMA UNIVERSITY</h1>
-          <p className="text-xs text-mute font-mono">AI Call Agent · Staff Mission Control</p>
+          <h1 className="text-xl font-bold text-primary tracking-tight">NIRMA CALLS</h1>
+          <p className="text-xs text-mute">AI Call Agent</p>
         </div>
 
-        <Card className="bg-canvas-soft border-hairline">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-ink">Staff Sign In</CardTitle>
+        <Card className="border-0 shadow-none">
+          <CardHeader className="p-0 pb-3">
+            <CardTitle className="text-sm font-semibold text-ink">Sign in</CardTitle>
             <CardDescription className="text-xs text-body">
-              Authenticate with your institutional staff credentials
+              Use the login given to you by the administrator.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div className="space-y-1.5">
                 <label htmlFor="login-email" className="text-xs font-medium text-body">
-                  Institutional Email
+                  Email
                 </label>
                 <Input
                   id="login-email"
@@ -58,8 +58,8 @@ export const LoginView: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="operator@nirmauni.ac.in"
-                  className="bg-canvas-elevated text-ink"
+                  placeholder="name@nirmauni.ac.in"
+                  className="text-ink"
                 />
               </div>
               <div className="space-y-1.5">
@@ -75,12 +75,12 @@ export const LoginView: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="bg-canvas-elevated text-ink"
+                  className="text-ink"
                 />
               </div>
 
               {error && (
-                <div role="alert" className="text-[11px] text-red-400 bg-red-950/30 border border-red-900/40 rounded px-2.5 py-1.5">
+                <div role="alert" className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2.5 py-1.5">
                   {error}
                 </div>
               )}
@@ -100,8 +100,8 @@ export const LoginView: React.FC = () => {
           </CardContent>
         </Card>
 
-        <p className="text-center text-[10px] text-mute font-mono">
-          Seed credentials (local dev): admin@nirmauni.ac.in · password set via backend/seeds.py
+        <p className="text-center text-[11px] text-mute">
+          No account? Ask the system administrator in person.
         </p>
       </div>
     </div>

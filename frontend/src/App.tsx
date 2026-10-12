@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
-import { Header } from '@/components/Header';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import { Activity, Radio, PhoneCall, FileText, Users } from 'lucide-react';
+import { Sidebar, type NavTab } from '@/components/Sidebar';
 import { LoginView } from '@/components/LoginView';
 import { Toaster } from '@/components/ui/sonner';
 import { useAuth } from '@/lib/auth-context';
@@ -16,19 +17,21 @@ const DashboardView = lazy(() => import('@/components/DashboardView').then(m => 
 const LiveTelemetryView = lazy(() => import('@/components/LiveTelemetryView').then(m => ({ default: m.LiveTelemetryView })));
 const NewCallView = lazy(() => import('@/components/NewCallView').then(m => ({ default: m.NewCallView })));
 const TranscriptView = lazy(() => import('@/components/TranscriptView').then(m => ({ default: m.TranscriptView })));
+const UsersView = lazy(() => import('@/components/UsersView').then(m => ({ default: m.UsersView })));
+
+type TabId = 'dashboard' | 'telemetry' | 'campaigns' | 'transcripts' | 'users';
 
 const ViewFallback = () => (
-  <div className="flex items-center justify-center min-h-[480px]">
-    <div className="flex flex-col items-center space-y-3 p-6 glass-panel rounded-lg border border-hairline">
-      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      <span className="text-xs font-mono text-mute tracking-wider uppercase">Loading View Telemetry...</span>
-    </div>
+  <div className="flex items-center justify-center min-h-[360px]">
+    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
 function AuthenticatedApp() {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'telemetry' | 'campaigns' | 'transcripts'>('dashboard');
+  const isAdmin = user?.role === 'admin';
+  // Faculty (operator) accounts only get the call form and their own transcripts.
+  const [activeTab, setActiveTab] = useState<TabId>(isAdmin ? 'dashboard' : 'campaigns');
 
   const [campaigns, setCampaigns] = useState<CallCampaign[]>([]);
   const [tasks, setTasks] = useState<CallTask[]>([]);
@@ -39,6 +42,7 @@ function AuthenticatedApp() {
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshAnalytics = useCallback(async () => {
+    if (!isAdmin) return;
     const [summaryData, volumeData, outcomesData] = await Promise.all([
       api.getDashboardSummary(),
       api.getDailyVolume(7),
@@ -47,7 +51,7 @@ function AuthenticatedApp() {
     setSummary(summaryData);
     setVolume(volumeData);
     setOutcomes(outcomesData);
-  }, []);
+  }, [isAdmin]);
 
   const refreshTasks = useCallback(async (campaignList: CallCampaign[]) => {
     const relevant = campaignList.filter((c) => c.status === 'running' || c.status === 'pending' || c.status === 'completed');
@@ -61,7 +65,6 @@ function AuthenticatedApp() {
     await refreshTasks(data);
   }, [refreshTasks]);
 
-  // Initial data load
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -74,7 +77,7 @@ function AuthenticatedApp() {
         await Promise.all([refreshAnalytics(), refreshTasks(campaignsData)]);
       } catch (err) {
         if (!cancelled) {
-          setLoadError(err instanceof api.ApiError ? err.message : 'Unable to reach the AI Call Agent backend.');
+          setLoadError(err instanceof api.ApiError ? err.message : 'Unable to reach the server.');
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -83,7 +86,7 @@ function AuthenticatedApp() {
     return () => { cancelled = true; };
   }, [refreshAnalytics, refreshTasks]);
 
-  // Live telemetry: reconcile task state whenever the backend broadcasts a call event.
+  // Live updates: refresh whenever the backend reports a call event.
   useEffect(() => {
     const socket = api.connectCallEvents(() => {
       refreshCampaigns();
@@ -103,81 +106,71 @@ function AuthenticatedApp() {
     refreshAnalytics();
   }, [refreshCampaigns, refreshAnalytics]);
 
-  const handleLaunchNewCampaign = useCallback(() => setActiveTab('campaigns'), []);
-  const handleViewTranscripts = useCallback(() => setActiveTab('transcripts'), []);
-  const handleNavigateToTelemetry = useCallback(() => setActiveTab('telemetry'), []);
-  const handleTabChange = useCallback((tab: string) => setActiveTab(tab as any), []);
+  const activeCallCount = useMemo(
+    () => tasks.filter(t => t.status === 'in_progress' || t.status === 'ringing').length,
+    [tasks]
+  );
 
-  const activeCallCount = React.useMemo(() => {
-    return tasks.filter(t => t.status === 'in_progress' || t.status === 'ringing').length;
-  }, [tasks]);
+  const tabs = useMemo<NavTab[]>(() => (
+    isAdmin
+      ? [
+          { id: 'dashboard', label: 'Overview', icon: Activity },
+          { id: 'telemetry', label: 'Live calls', icon: Radio, badge: activeCallCount },
+          { id: 'campaigns', label: 'New call', icon: PhoneCall },
+          { id: 'transcripts', label: 'Transcripts', icon: FileText },
+          { id: 'users', label: 'Faculty access', icon: Users },
+        ]
+      : [
+          { id: 'campaigns', label: 'New call', icon: PhoneCall },
+          { id: 'transcripts', label: 'My transcripts', icon: FileText },
+        ]
+  ), [isAdmin, activeCallCount]);
 
   return (
-    <div className="min-h-screen bg-canvas text-ink flex flex-col font-sans antialiased selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-canvas text-ink flex flex-col lg:flex-row font-sans antialiased">
       <Toaster position="top-right" richColors />
 
-      <Header
+      <Sidebar
+        tabs={tabs}
         activeTab={activeTab}
-        setActiveTab={handleTabChange}
-        activeCallCount={activeCallCount}
+        setActiveTab={(t) => setActiveTab(t as TabId)}
         userName={user?.name ?? 'Staff'}
         userRole={user?.role ?? 'operator'}
         onLogout={logout}
       />
 
-      <main id="main-content" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 focus:outline-none">
+      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 focus:outline-none">
         {isLoading ? (
           <ViewFallback />
         ) : loadError ? (
-          <div className="flex flex-col items-center justify-center min-h-[400px] space-y-3 text-center">
-            <p className="text-sm text-ink font-medium">Could not load telemetry from the backend</p>
-            <p className="text-xs text-mute font-mono max-w-md">{loadError}</p>
-            <p className="text-xs text-mute">Confirm the FastAPI backend is running at <code className="font-mono">:8000</code> and reachable via the dev proxy.</p>
+          <div className="flex flex-col items-center justify-center min-h-[320px] space-y-2 text-center">
+            <p className="text-sm text-ink font-medium">Could not load data</p>
+            <p className="text-xs text-mute max-w-md">{loadError}</p>
           </div>
         ) : (
           <Suspense fallback={<ViewFallback />}>
-            {activeTab === 'dashboard' && (
+            {activeTab === 'dashboard' && isAdmin && (
               <DashboardView
                 campaigns={campaigns}
                 summary={summary}
                 volume={volume}
                 outcomes={outcomes}
-                onLaunchNewCampaign={handleLaunchNewCampaign}
-                onViewTranscripts={handleViewTranscripts}
+                onLaunchNewCampaign={() => setActiveTab('campaigns')}
+                onViewTranscripts={() => setActiveTab('transcripts')}
               />
             )}
-
-            {activeTab === 'telemetry' && (
-              <LiveTelemetryView
-                tasks={tasks}
-                onSelectTask={() => {}}
-              />
-            )}
-
+            {activeTab === 'telemetry' && isAdmin && <LiveTelemetryView tasks={tasks} onSelectTask={() => {}} />}
             {activeTab === 'campaigns' && (
               <NewCallView
                 onCallLaunched={handleCallLaunched}
-                onNavigateToTelemetry={handleNavigateToTelemetry}
+                onNavigateToTelemetry={() => setActiveTab(isAdmin ? 'telemetry' : 'transcripts')}
               />
             )}
-
-            {activeTab === 'transcripts' && (
-              <TranscriptView tasks={tasks} onTaskRetried={handleTaskRetried} />
-            )}
+            {activeTab === 'transcripts' && <TranscriptView tasks={tasks} onTaskRetried={handleTaskRetried} />}
+            {activeTab === 'users' && isAdmin && <UsersView />}
           </Suspense>
         )}
       </main>
-
-      <footer className="border-t border-hairline bg-canvas-subtle py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-mute font-mono gap-2">
-          <div>
-            Nirma University • High-Performance Computing (HPC) AI Telephony Platform
-          </div>
-          <div className="flex items-center space-x-4">
-            <span>TRAI Window: Active (09:00 - 21:00 IST)</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
