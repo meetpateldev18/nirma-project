@@ -44,12 +44,16 @@ class CampaignRunner:
         filters: Dict[str, Any] = campaign.target_filter or {}
         query = db.query(Student).filter(Student.is_active == True)  # noqa: E712
 
-        if "department" in filters and filters["department"]:
-            query = query.filter(Student.department == filters["department"])
-        if "semester" in filters and filters["semester"]:
-            query = query.filter(Student.semester == int(filters["semester"]))
-        if "language_pref" in filters and filters["language_pref"]:
-            query = query.filter(Student.language_pref == filters["language_pref"])
+        # Individual-call shortcut: a single named recipient bypasses every other filter.
+        if "student_id" in filters and filters["student_id"]:
+            query = query.filter(Student.id == int(filters["student_id"]))
+        else:
+            if "department" in filters and filters["department"]:
+                query = query.filter(Student.department == filters["department"])
+            if "semester" in filters and filters["semester"]:
+                query = query.filter(Student.semester == int(filters["semester"]))
+            if "language_pref" in filters and filters["language_pref"]:
+                query = query.filter(Student.language_pref == filters["language_pref"])
 
         matching_students: List[Student] = query.all()
         logger.info(

@@ -3,8 +3,8 @@
 
 @layer base {
   body {
-    background-color: #080C15;
-    color: #F1F5F9;
+    background-color: #EEF1F6;
+    color: #16254D;
     font-family: 'Inter', system-ui, -apple-system, 'Noto Sans Gujarati', 'Noto Sans Devanagari', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1, "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
@@ -24,36 +24,36 @@
   }
 }
 
-/* Custom polished dark mission control scrollbar */
+/* Polished light mission control scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #080C15;
+  background: #EEF1F6;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(15, 23, 42, 0.16);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.26);
 }
 
 /* Glass panel classes from DESIGN.md */
 .glass-panel {
-  background: #0D1322;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 
 .glass-panel-elevated {
-  background: #131B2E;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.12);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
 }
 
 /* Live telephony glowing pulse */

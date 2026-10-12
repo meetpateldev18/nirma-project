@@ -1,5 +1,5 @@
 import React from 'react';
-import { PhoneCall, Activity, Radio, Cpu, Clock, ShieldCheck } from 'lucide-react';
+import { PhoneCall, Activity, Radio, Cpu, Clock, ShieldCheck, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -8,9 +8,19 @@ interface HeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   activeCallCount: number;
+  userName: string;
+  userRole: string;
+  onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = React.memo(({ activeTab, setActiveTab, activeCallCount }) => {
+export const Header: React.FC<HeaderProps> = React.memo(({ activeTab, setActiveTab, activeCallCount, userName, userRole, onLogout }) => {
+  const initials = userName
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'ST';
   return (
     <header className="border-b border-hairline bg-canvas-subtle/95 backdrop-blur-md sticky top-0 z-50">
       {/* WCAG 2.2 Skip Navigation Link */}
@@ -70,17 +80,26 @@ export const Header: React.FC<HeaderProps> = React.memo(({ activeTab, setActiveT
           {/* Staff Profile & Status */}
           <div className="flex items-center space-x-3">
             <div className="text-right hidden sm:block">
-              <div className="text-xs font-medium text-ink">Urva Gandhi</div>
+              <div className="text-xs font-medium text-ink">{userName}</div>
               <div className="text-[10px] font-mono text-live-pulse flex items-center justify-end space-x-1">
                 <ShieldCheck className="w-3 h-3 inline" aria-hidden="true" />
-                <span>Super Administrator</span>
+                <span className="capitalize">{userRole}</span>
               </div>
             </div>
-            <Avatar className="h-8 w-8 border border-hairline" aria-label="Urva Gandhi, Super Administrator">
+            <Avatar className="h-8 w-8 border border-hairline" aria-label={`${userName}, ${userRole}`}>
               <AvatarFallback className="bg-gradient-to-tr from-telemetry-cyan to-primary-deep text-white text-xs font-medium">
-                UG
+                {initials}
               </AvatarFallback>
             </Avatar>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onLogout}
+              aria-label="Sign out"
+              className="text-body hover:text-ink h-8 w-8 p-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
 
@@ -93,7 +112,7 @@ export const Header: React.FC<HeaderProps> = React.memo(({ activeTab, setActiveT
           {[
             { id: 'dashboard', label: 'Analytics & KPIs', icon: Activity },
             { id: 'telemetry', label: 'Live Telemetry', icon: Radio, badge: activeCallCount },
-            { id: 'campaigns', label: 'Campaign Launcher', icon: PhoneCall },
+            { id: 'campaigns', label: 'New Call', icon: PhoneCall },
             { id: 'transcripts', label: 'Transcripts & Call Logs', icon: Clock },
           ].map((tab) => {
             const Icon = tab.icon;

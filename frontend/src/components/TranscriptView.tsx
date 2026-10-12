@@ -22,43 +22,57 @@ import {
   TableHeader, 
   TableRow 
 } from '@/components/ui/table';
-import { 
-  type CallTask,
-  CallLog, 
-  INITIAL_TASKS, 
-  INITIAL_TRANSCRIPTS 
-} from '@/services/api';
+import { type CallTask, CallLog } from '@/services/api';
+import { getCallTranscript, retryCallTask } from '@/lib/api-client';
 
-export const TranscriptView: React.FC = React.memo(() => {
+interface TranscriptViewProps {
+  tasks: CallTask[];
+  onTaskRetried: () => void;
+}
+
+export const TranscriptView: React.FC<TranscriptViewProps> = React.memo(({ tasks, onTaskRetried }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTaskId, setSelectedTaskId] = useState<number>(501);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [activeLog, setActiveLog] = useState<CallLog | null>(null);
+  const [isLoadingLog, setIsLoadingLog] = useState(false);
 
   const filteredTasks = React.useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return INITIAL_TASKS;
-    return INITIAL_TASKS.filter(task => 
+    if (!term) return tasks;
+    return tasks.filter(task =>
       task.student_name.toLowerCase().includes(term) ||
       task.student_roll.toLowerCase().includes(term) ||
       task.student_phone.includes(term)
     );
-  }, [searchTerm]);
+  }, [tasks, searchTerm]);
 
   const selectedTask = React.useMemo(() => {
-    return INITIAL_TASKS.find(t => t.id === selectedTaskId) || INITIAL_TASKS[0];
-  }, [selectedTaskId]);
+    return tasks.find(t => t.id === selectedTaskId) || tasks[0];
+  }, [tasks, selectedTaskId]);
 
-  const activeLog: CallLog = React.useMemo(() => {
-    return INITIAL_TRANSCRIPTS[selectedTaskId] || INITIAL_TRANSCRIPTS[501];
-  }, [selectedTaskId]);
+  React.useEffect(() => {
+    if (!selectedTask) {
+      setActiveLog(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingLog(true);
+    getCallTranscript(selectedTask.id)
+      .then((log) => { if (!cancelled) setActiveLog(log); })
+      .catch(() => { if (!cancelled) setActiveLog(null); })
+      .finally(() => { if (!cancelled) setIsLoadingLog(false); });
+    return () => { cancelled = true; };
+  }, [selectedTask?.id]);
 
   const togglePlayAudio = React.useCallback(() => {
+    if (!selectedTask) return;
     setIsPlaying(prev => {
       const nextState = !prev;
       if (nextState) {
         toast.info(`Playing call recording for ${selectedTask.student_name}`, {
-          description: `Source: MinIO audio archive (${selectedTask.duration_sec}s connected duration)`
+          description: `Source: audio archive (${selectedTask.duration_sec ?? 0}s connected duration)`
         });
       }
       return nextState;
@@ -66,15 +80,15 @@ export const TranscriptView: React.FC = React.memo(() => {
   }, [selectedTask]);
 
   const handleManualRetry = React.useCallback((task: CallTask) => {
-    toast.promise(
-      new Promise((resolve) => setTimeout(resolve, 800)),
-      {
-        loading: `Queueing manual PSTN retry for ${task.student_phone}...`,
-        success: `Call task #${task.id} reset to pending. Carrier dial dispatched.`,
-        error: 'Failed to reset task'
-      }
-    );
-  }, []);
+    toast.promise(retryCallTask(task.id), {
+      loading: `Queueing manual PSTN retry for ${task.student_phone}...`,
+      success: () => {
+        onTaskRetried();
+        return `Call task #${task.id} reset to pending. Carrier dial dispatched.`;
+      },
+      error: (err) => (err instanceof Error ? err.message : 'Failed to reset task'),
+    });
+  }, [onTaskRetried]);
 
   return (
     <div id="panel-transcripts" role="tabpanel" aria-labelledby="tab-transcripts" className="space-y-6">
@@ -188,6 +202,12 @@ export const TranscriptView: React.FC = React.memo(() => {
 
         {/* Right Column: Audio Player & Turn-by-Turn Transcript */}
         <div className="lg:col-span-7 space-y-5">
+          {!selectedTask ? (
+            <Card className="bg-canvas-soft border-hairline flex items-center justify-center min-h-[300px]">
+              <p className="text-xs text-mute font-mono">No call records yet. Launch a campaign to generate call logs.</p>
+            </Card>
+          ) : (
+          <>
           {/* Audio Player Card */}
           <Card className="bg-canvas-elevated border-hairline-strong shadow-lg">
             <CardContent className="p-5 space-y-4">
@@ -220,7 +240,7 @@ export const TranscriptView: React.FC = React.memo(() => {
                     <span>Carrier Audio Track (8kHz mono)</span>
                   </div>
                   <div className="tabular-nums">
-                    00:18 / 00:{selectedTask.duration_sec || 42}
+                    00:00 / 00:{String(selectedTask.duration_sec ?? 0).padStart(2, '0')}
                   </div>
                 </div>
 
@@ -282,15 +302,15 @@ export const TranscriptView: React.FC = React.memo(() => {
               <div className="grid grid-cols-3 gap-2.5 p-3 rounded-md bg-canvas-soft border border-hairline text-xs font-mono">
                 <div>
                   <div className="text-[10px] text-mute uppercase">STT Engine</div>
-                  <div className="text-ink font-semibold truncate">{activeLog.stt_provider}</div>
+                  <div className="text-ink font-semibold truncate">{activeLog?.stt_provider ?? '—'}</div>
                 </div>
                 <div>
                   <div className="text-[10px] text-mute uppercase">LLM Engine</div>
-                  <div className="text-ink font-semibold truncate">{activeLog.llm_provider}</div>
+                  <div className="text-ink font-semibold truncate">{activeLog?.llm_provider ?? '—'}</div>
                 </div>
                 <div>
                   <div className="text-[10px] text-mute uppercase">TTS Engine</div>
-                  <div className="text-ink font-semibold truncate">{activeLog.tts_provider}</div>
+                  <div className="text-ink font-semibold truncate">{activeLog?.tts_provider ?? '—'}</div>
                 </div>
               </div>
             </CardContent>
@@ -304,12 +324,16 @@ export const TranscriptView: React.FC = React.memo(() => {
                   FULL MULTI-TURN TRANSCRIPT
                 </CardTitle>
                 <span className="text-xs font-mono text-mute">
-                  Average Turn Latency: <strong className="text-live-pulse tabular-nums">{activeLog.avg_latency_ms} ms</strong>
+                  Average Turn Latency: <strong className="text-live-pulse tabular-nums">{activeLog?.avg_latency_ms ?? 0} ms</strong>
                 </span>
               </div>
             </CardHeader>
             <CardContent className="p-5 space-y-4 max-h-[420px] overflow-y-auto" role="log" aria-label="Conversation turn-by-turn dialogue history">
-              {activeLog.transcript.map((turn, index) => {
+              {isLoadingLog && <p className="text-xs text-mute font-mono">Loading transcript...</p>}
+              {!isLoadingLog && !activeLog && (
+                <p className="text-xs text-mute font-mono">No transcript recorded for this call.</p>
+              )}
+              {activeLog?.transcript.map((turn, index) => {
                 const isAssistant = turn.role === 'assistant';
                 return (
                   <div 
@@ -353,6 +377,8 @@ export const TranscriptView: React.FC = React.memo(() => {
               })}
             </CardContent>
           </Card>
+          </>
+          )}
         </div>
       </div>
     </div>

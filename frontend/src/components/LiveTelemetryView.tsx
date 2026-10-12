@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CallTask, CallLog, INITIAL_TRANSCRIPTS } from '@/services/api';
+import { CallTask, CallLog } from '@/services/api';
+import { getCallTranscript } from '@/lib/api-client';
 
 interface LiveTelemetryViewProps {
   tasks: CallTask[];
@@ -21,10 +22,25 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
   tasks,
   onSelectTask,
 }) => {
-  const [selectedTaskId, setSelectedTaskId] = useState<number>(501);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [activeLog, setActiveLog] = useState<CallLog | null>(null);
+  const [isLoadingLog, setIsLoadingLog] = useState(false);
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId) || tasks[0];
-  const activeLog: CallLog | undefined = INITIAL_TRANSCRIPTS[selectedTaskId];
+
+  React.useEffect(() => {
+    if (!selectedTask) {
+      setActiveLog(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingLog(true);
+    getCallTranscript(selectedTask.id)
+      .then((log) => { if (!cancelled) setActiveLog(log); })
+      .catch(() => { if (!cancelled) setActiveLog(null); })
+      .finally(() => { if (!cancelled) setIsLoadingLog(false); });
+    return () => { cancelled = true; };
+  }, [selectedTask?.id]);
 
   const handleHangup = React.useCallback((task: CallTask) => {
     toast.error(`Call Terminated`, {
@@ -73,6 +89,12 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
             <span>DISPATCHED CARRIER CALLS</span>
             <span className="text-mute">SELECT TO INSPECT</span>
           </div>
+
+          {tasks.length === 0 && (
+            <div className="p-5 rounded-md border border-hairline bg-canvas-soft text-xs text-mute font-mono text-center">
+              No call tasks found for active campaigns. Launch a campaign to see live PSTN telemetry here.
+            </div>
+          )}
 
           <div className="space-y-2.5" role="list" aria-label="Dispatched carrier calls">
             {tasks.map((task) => {
@@ -155,6 +177,11 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
 
         {/* Right Column: Active Call Inspector Console (7 cols) */}
         <div className="lg:col-span-7">
+          {!selectedTask ? (
+            <Card className="bg-canvas-soft border-hairline h-full flex items-center justify-center min-h-[300px]">
+              <p className="text-xs text-mute font-mono">Select a dispatched call to inspect its live stream.</p>
+            </Card>
+          ) : (
           <Card className="bg-canvas-soft border-hairline h-full flex flex-col">
             <CardHeader className="p-5 border-b border-hairline">
               <div className="flex items-start justify-between">
@@ -212,6 +239,14 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                 aria-relevant="additions text"
                 aria-label="Live Call Conversational Stream"
               >
+                {isLoadingLog && (
+                  <p className="text-xs text-mute font-mono">Loading transcript...</p>
+                )}
+                {!isLoadingLog && !activeLog && (
+                  <p className="text-xs text-mute font-mono">
+                    No transcript logged yet for this call{selectedTask.status === 'completed' ? '.' : ' — it is still in progress.'}
+                  </p>
+                )}
                 {activeLog?.transcript.map((turn, index) => {
                   const isAssistant = turn.role === 'assistant';
                   return (
@@ -256,9 +291,9 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                 <div className="flex items-center justify-between text-xs font-mono">
                   <div className="flex items-center space-x-2 text-body">
                     <Cpu className="w-3.5 h-3.5 text-telemetry-cyan" aria-hidden="true" />
-                    <span>Last Turn Turnaround:</span>
+                    <span>Average Turn Turnaround:</span>
                     <strong className="text-ink tabular-nums">
-                      {selectedTask.turn_latency_ms || 1840} ms
+                      {activeLog?.avg_latency_ms ?? selectedTask.turn_latency_ms ?? 0} ms
                     </strong>
                   </div>
                   <Badge variant="live" className="text-[10px] font-mono">
@@ -266,13 +301,14 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                   </Badge>
                 </div>
                 <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-hairline text-[10px] font-mono text-mute">
-                  <div>ASR: <span className="text-ink tabular-nums">~450ms</span> (IndicConformer)</div>
-                  <div>LLM: <span className="text-ink tabular-nums">~890ms</span> (Qwen-14B)</div>
-                  <div>TTS: <span className="text-ink tabular-nums">~500ms</span> (IndicF5)</div>
+                  <div>STT: <span className="text-ink">{activeLog?.stt_provider ?? '—'}</span></div>
+                  <div>LLM: <span className="text-ink">{activeLog?.llm_provider ?? '—'}</span></div>
+                  <div>TTS: <span className="text-ink">{activeLog?.tts_provider ?? '—'}</span></div>
                 </div>
               </div>
             </CardContent>
           </Card>
+          )}
         </div>
       </div>
     </div>

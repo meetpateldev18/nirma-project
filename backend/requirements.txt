@@ -28,6 +28,7 @@ pytz>=2024.1
 
 # AI Fallback & Audio Processing
 gtts>=2.5.1
+pypdf>=4.2.0
 
 # Metrics & Data Parsing
 prometheus-client>=0.20.0

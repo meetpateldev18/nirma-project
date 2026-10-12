@@ -24,53 +24,61 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { CallCampaign } from '@/services/api';
+import { CallCampaign, DashboardSummary, DailyVolume, OutcomeDistribution } from '@/services/api';
 
 interface DashboardViewProps {
   campaigns: CallCampaign[];
+  summary: DashboardSummary | null;
+  volume: DailyVolume[];
+  outcomes: OutcomeDistribution | null;
   onLaunchNewCampaign: () => void;
   onViewTranscripts: () => void;
 }
 
-const DAILY_VOLUME_DATA = [
-  { date: 'Oct 03', placed: 320, completed: 285, failed: 35 },
-  { date: 'Oct 04', placed: 410, completed: 375, failed: 35 },
-  { date: 'Oct 05', placed: 580, completed: 530, failed: 50 },
-  { date: 'Oct 06', placed: 490, completed: 440, failed: 50 },
-  { date: 'Oct 07', placed: 640, completed: 595, failed: 45 },
-  { date: 'Oct 08', placed: 720, completed: 680, failed: 40 },
-  { date: 'Oct 09', placed: 438, completed: 412, failed: 26 },
-];
+const OUTCOME_COLORS: Record<string, string> = {
+  completed: '#10B981',
+  no_answer: '#F59E0B',
+  busy: '#A855F7',
+  failed: '#EF4444',
+  cancelled: '#64748B',
+  pending: '#06B6D4',
+};
 
-const DISPOSITION_DATA = [
-  { name: 'Completed & Answered', value: 3317, color: '#10B981' },
-  { name: 'No Answer / Timeout', value: 245, color: '#F59E0B' },
-  { name: 'User Busy / Rejected', value: 182, color: '#A855F7' },
-  { name: 'Carrier Error / Failed', value: 68, color: '#EF4444' },
-];
-
-const LATENCY_BREAKDOWN = [
-  { stage: 'ASR (IndicConformer)', ms: 1080, budget: 1200, color: '#06B6D4' },
-  { stage: 'LLM (Qwen-14B Local)', ms: 1420, budget: 1800, color: '#E06D3B' },
-  { stage: 'TTS (IndicF5 Synthesis)', ms: 510, budget: 600, color: '#10B981' },
-  { stage: 'Network & PSTN Buffer', ms: 280, budget: 400, color: '#A855F7' },
-];
+const OUTCOME_LABELS: Record<string, string> = {
+  completed: 'Completed & Answered',
+  no_answer: 'No Answer / Timeout',
+  busy: 'User Busy / Rejected',
+  failed: 'Carrier Error / Failed',
+  cancelled: 'Cancelled',
+  pending: 'Pending Dispatch',
+};
 
 export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
   campaigns,
+  summary,
+  volume,
+  outcomes,
   onLaunchNewCampaign,
   onViewTranscripts,
 }) => {
-  const { totalCalls, completedCalls, connectionRate } = React.useMemo(() => {
-    const total = campaigns.reduce((acc, c) => acc + c.total_tasks, 0);
-    const completed = campaigns.reduce((acc, c) => acc + c.completed_tasks, 0);
-    const rate = total > 0 ? ((completed / total) * 100).toFixed(1) : '94.2';
-    return {
-      totalCalls: total,
-      completedCalls: completed,
-      connectionRate: rate,
-    };
-  }, [campaigns]);
+  const totalCalls = summary?.total_calls ?? 0;
+  const connectionRate = (summary?.connection_rate_pct ?? 0).toFixed(1);
+  const avgDuration = summary?.avg_duration_sec ?? 0;
+  const avgTurnLatencySec = ((summary?.avg_turn_latency_ms ?? 0) / 1000).toFixed(2);
+
+  const dispositionData = React.useMemo(() => {
+    const counts = outcomes?.outcome_counts ?? {};
+    return Object.entries(counts).map(([key, value]) => ({
+      name: OUTCOME_LABELS[key] || key,
+      value,
+      color: OUTCOME_COLORS[key] || '#64748B',
+    }));
+  }, [outcomes]);
+
+  const dailyVolumeData = React.useMemo(
+    () => volume.map((v) => ({ date: v.date, placed: v.total_calls, completed: v.completed_calls, failed: v.failed_calls })),
+    [volume]
+  );
 
   return (
     <div id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" className="space-y-6">
@@ -118,11 +126,11 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
                 {totalCalls.toLocaleString()}
               </span>
               <span className="text-xs text-live-pulse font-mono flex items-center">
-                <TrendingUp className="w-3 h-3 mr-0.5 inline" /> +12.4%
+                <TrendingUp className="w-3 h-3 mr-0.5 inline" /> {summary?.active_campaigns ?? 0} active
               </span>
             </div>
             <p className="text-[11px] text-mute mt-1 font-mono">
-              Across active academic terms
+              Across {summary?.total_campaigns ?? 0} total campaigns
             </p>
           </CardContent>
         </Card>
@@ -161,14 +169,11 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className="text-3xl font-semibold tracking-tight text-ink tabular-nums font-sans">
-                48.6s
-              </span>
-              <span className="text-xs text-body font-mono">
-                ~3.2 turns/call
+                {avgDuration.toFixed(1)}s
               </span>
             </div>
             <p className="text-[11px] text-mute mt-1 font-mono">
-              Brevity constraint strictly held
+              Across {summary?.completed_calls ?? 0} connected calls
             </p>
           </CardContent>
         </Card>
@@ -184,14 +189,14 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className="text-3xl font-semibold tracking-tight text-live-pulse tabular-nums font-sans">
-                1.84s
+                {avgTurnLatencySec}s
               </span>
               <span className="text-[11px] text-live-pulse font-mono px-1.5 py-0.5 rounded bg-live-pulse/10 border border-live-pulse/20">
                 BUDGET &lt; 4.0s
               </span>
             </div>
             <p className="text-[11px] text-mute mt-1 font-mono">
-              P95 Peak: 2.38s (Safe margin)
+              STT → LLM → TTS cascade average
             </p>
           </CardContent>
         </Card>
@@ -224,7 +229,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
           <CardContent className="p-5 pt-3">
             <div className="h-[260px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={DAILY_VOLUME_DATA} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={dailyVolumeData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorPlaced" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#E06D3B" stopOpacity={0.35}/>
@@ -239,10 +244,10 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
                   <YAxis stroke="#64748B" fontSize={11} tickLine={false} axisLine={false} />
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: '#131B2E', 
-                      borderColor: 'rgba(255,255,255,0.16)', 
+                      backgroundColor: '#FFFFFF', 
+                      borderColor: 'rgba(15,23,42,0.12)', 
                       borderRadius: '6px',
-                      color: '#F1F5F9',
+                      color: '#16254D',
                       fontSize: '12px',
                       fontFamily: 'Inter'
                     }} 
@@ -268,22 +273,22 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={DISPOSITION_DATA}
+                    data={dispositionData}
                     innerRadius={55}
                     outerRadius={80}
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {DISPOSITION_DATA.map((entry, index) => (
+                    {dispositionData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: '#131B2E', 
-                      borderColor: 'rgba(255,255,255,0.16)', 
+                      backgroundColor: '#FFFFFF', 
+                      borderColor: 'rgba(15,23,42,0.12)', 
                       borderRadius: '6px',
-                      color: '#F1F5F9',
+                      color: '#16254D',
                       fontSize: '11px' 
                     }} 
                   />
@@ -291,7 +296,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               </ResponsiveContainer>
             </div>
             <div className="mt-4 space-y-2 text-xs font-mono">
-              {DISPOSITION_DATA.map((item) => (
+              {dispositionData.map((item) => (
                 <div key={item.name} className="flex items-center justify-between text-body">
                   <div className="flex items-center space-x-2">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
@@ -307,41 +312,36 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
 
       {/* Latency Pipeline Breakdown & Active Campaigns */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Latency Breakdown Card */}
+        {/* Latency Summary Card */}
         <Card className="bg-canvas-soft border-hairline">
           <CardHeader className="p-5 pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold text-ink">AI Pipeline Turn Latency</CardTitle>
               <Badge variant="cyan" className="font-mono text-[10px]">
-                TOTAL: 3,290 ms
+                AVG: {(summary?.avg_turn_latency_ms ?? 0).toFixed(0)} ms
               </Badge>
             </div>
             <CardDescription className="text-xs text-body mt-0.5">
-              Strictly budgeted against 4,000 ms SLA threshold
+              Full STT → LLM → TTS cascade, budgeted against 4,000 ms SLA threshold
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-3 space-y-4">
-            {LATENCY_BREAKDOWN.map((item) => {
-              const pct = Math.round((item.ms / item.budget) * 100);
-              return (
-                <div key={item.stage} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-body font-mono">{item.stage}</span>
-                    <span className="text-ink font-mono font-medium tabular-nums">
-                      {item.ms} ms / <span className="text-mute">{item.budget} ms</span>
-                    </span>
-                  </div>
-                  <div className="w-full bg-canvas-elevated h-1.5 rounded-full overflow-hidden border border-hairline">
-                    <div 
-                      className="h-full rounded-full transition-all duration-300" 
-                      style={{ width: `${pct}%`, backgroundColor: item.color }} 
-                    />
-                  </div>
-                </div>
-              );
-            })}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-body font-mono">Average turn latency</span>
+                <span className="text-ink font-mono font-medium tabular-nums">
+                  {(summary?.avg_turn_latency_ms ?? 0).toFixed(0)} ms / <span className="text-mute">4,000 ms</span>
+                </span>
+              </div>
+              <div className="w-full bg-canvas-elevated h-1.5 rounded-full overflow-hidden border border-hairline">
+                <div
+                  className="h-full rounded-full transition-all duration-300 bg-primary"
+                  style={{ width: `${Math.min(100, Math.round(((summary?.avg_turn_latency_ms ?? 0) / 4000) * 100))}%` }}
+                />
+              </div>
+            </div>
             <div className="pt-2 border-t border-hairline text-[11px] text-mute font-mono">
-              ✓ Hardware: Local RTX 3090 / 4090 on Supercomputer Node
+              Based on {summary?.completed_calls ?? 0} completed calls logged to date
             </div>
           </CardContent>
         </Card>

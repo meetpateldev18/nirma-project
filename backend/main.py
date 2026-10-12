@@ -31,6 +31,7 @@ from backend.api.analytics import router as analytics_router
 from backend.api.auth import router as auth_router
 from backend.api.calls import router as calls_router
 from backend.api.campaigns import router as campaigns_router
+from backend.api.students import router as students_router
 from backend.config import settings
 from backend.database.session import AsyncSessionLocal
 from backend.telephony.webhook_handler import router as webhook_router
@@ -118,6 +119,7 @@ app.mount(
 app.include_router(auth_router)
 app.include_router(campaigns_router)
 app.include_router(calls_router)
+app.include_router(students_router)
 app.include_router(analytics_router)
 app.include_router(webhook_router)
 app.include_router(ws_router)
