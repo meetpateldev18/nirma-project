@@ -251,31 +251,46 @@ class GroqLLM(LLMAdapter):
         return content.replace("*", "").replace("#", "").strip()
 
 
-class FallbackLLM(LLMAdapter):
+class GeminiLLM(LLMAdapter):
     """
-    Composite LLM adapter providing automatic failover between local Ollama and Groq API.
+    Google Gemini Cloud LLM Adapter (e.g. Gemini 3.8 Flash, 2.5 Flash, 1.5 Flash).
 
-    Guarantees that conversational turns are never dropped even if the local GPU
-    is temporarily saturated or Ollama is restarting.
+    Leverages Google's Generative Language API with low-latency REST endpoints.
+    Provides native multilingual conversational fluency across Hindi, Gujarati, and English.
     """
 
     def __init__(
         self,
-        primary: Optional[LLMAdapter] = None,
-        fallback: Optional[LLMAdapter] = None,
-        timeout_seconds: float = 3.5,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        timeout_seconds: float = 4.0,
     ) -> None:
         """
-        Initializes the FallbackLLM composite.
+        Initializes the Gemini LLM adapter.
 
         Args:
-            primary: Primary local LLM adapter (default: OllamaLLM).
-            fallback: Cloud failover LLM adapter (default: GroqLLM).
-            timeout_seconds: Execution deadline before triggering cloud fallback (default: 3.5s).
+            api_key: Google Gemini API key (defaults to settings.gemini_api_key).
+            model: Target Gemini model identifier (defaults to settings.gemini_model).
+            timeout_seconds: Network request timeout.
         """
-        self.primary = primary or OllamaLLM()
-        self.fallback = fallback or GroqLLM()
+        self.api_key = api_key if api_key is not None else settings.gemini_api_key
+        self.model = model or settings.gemini_model
         self.timeout_seconds = timeout_seconds
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Returns or lazily creates a persistent pooled AsyncClient for Gemini."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self.timeout_seconds, connect=2.0),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
+            )
+        return self._client
+
+    async def aclose(self) -> None:
+        """Gracefully closes persistent HTTP connection pool."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     async def generate(
         self,
@@ -284,35 +299,168 @@ class FallbackLLM(LLMAdapter):
         user_input: str,
     ) -> str:
         """
-        Executes bounded LLM generation with automatic fallback to cloud.
+        Submits chat prompt to Google Gemini API and returns conversational reply.
 
         Args:
-            system_prompt: System script instructions.
+            system_prompt: Base campaign instructions.
+            history: Message history.
+            user_input: User speech input.
+
+        Returns:
+            str: Concise textual reply ready for voice synthesis.
+
+        Raises:
+            ValueError: If GEMINI_API_KEY is not configured.
+            httpx.HTTPError: If the remote API fails.
+        """
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY is not configured in environment variables.")
+
+        full_system_prompt = f"{system_prompt}{TELEPHONY_VOICE_CONSTRAINT}"
+
+        # Format messages for Gemini generateContent API
+        contents = []
+        for msg in (history[-6:] if history else []):
+            role = "user" if msg.get("role") == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": msg.get("content", "")}]})
+        contents.append({"role": "user", "parts": [{"text": user_input}]})
+
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        payload = {
+            "system_instruction": {"parts": [{"text": full_system_prompt}]},
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": 60,
+                "temperature": 0.2,
+            },
+        }
+
+        client = await self._get_client()
+        resp = await client.post(endpoint, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise ValueError(f"Gemini API returned no candidates: {data}")
+
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts:
+            raise ValueError(f"Gemini API returned empty parts: {data}")
+
+        text = parts[0].get("text", "")
+        return text.replace("*", "").replace("#", "").strip()
+
+
+class RuleBasedLLM(LLMAdapter):
+    """
+    Deterministic rule-based fallback when all cloud and local inference engines fail.
+    """
+
+    async def generate(
+        self,
+        system_prompt: str,
+        history: List[Dict[str, str]],
+        user_input: str,
+    ) -> str:
+        """
+        Returns a polite, deterministic notice to guarantee the call never crashes.
+        """
+        return "Thank you for your response. We have recorded your message for Nirma University records."
+
+
+class FallbackLLM(LLMAdapter):
+    """
+    Composite LLM adapter providing multi-tier automatic failover across
+    Local Ollama -> Gemini 3.8 Flash -> Gemini 3.5 Flash-Lite -> Groq Cloud -> Rule-Based.
+
+    Guarantees that conversational turns are never dropped even if an engine
+    is temporarily saturated or experiencing demand spikes.
+    """
+
+    def __init__(
+        self,
+        primary: Optional[LLMAdapter] = None,
+        fallback: Optional[LLMAdapter] = None,
+        timeout_seconds: float = 3.0,
+    ) -> None:
+        """
+        Initializes the FallbackLLM composite cascade.
+
+        Args:
+            primary: Primary LLM adapter override.
+            fallback: Explicit fallback LLM adapter override.
+            timeout_seconds: Execution deadline per tier before triggering next fallback (default: 3.0s).
+        """
+        self.timeout_seconds = timeout_seconds
+        self.chain: List[LLMAdapter] = []
+
+        if primary is not None:
+            self.chain.append(primary)
+        else:
+            # 1. Local GPU Ollama if running on HPC supercomputer
+            self.chain.append(OllamaLLM())
+            # 2. Google Gemini 3.8 Flash (primary cloud reasoning)
+            if settings.gemini_api_key and not settings.gemini_api_key.startswith("your_"):
+                self.chain.append(GeminiLLM(model=settings.gemini_model, timeout_seconds=timeout_seconds))
+                # 3. Google Gemini 3.5 Flash-Lite (ultra low-latency failover)
+                if settings.gemini_fallback_model:
+                    self.chain.append(GeminiLLM(model=settings.gemini_fallback_model, timeout_seconds=2.0))
+
+        if fallback is not None:
+            self.chain.append(fallback)
+        else:
+            # 4. Groq Cloud (fast LLaMA-3.3-70b failover)
+            if settings.groq_api_key and not settings.groq_api_key.startswith("your_"):
+                self.chain.append(GroqLLM(timeout_seconds=2.5))
+            # 5. Deterministic rule-based template
+            self.chain.append(RuleBasedLLM())
+
+        # Retain backward compatibility attributes
+        self.primary = self.chain[0]
+        self.fallback = self.chain[1] if len(self.chain) > 1 else self.chain[0]
+
+    async def generate(
+        self,
+        system_prompt: str,
+        history: List[Dict[str, str]],
+        user_input: str,
+    ) -> str:
+        """
+        Executes bounded LLM generation across the cascade until a valid response is generated.
+
+        Args:
+            system_prompt: Base campaign instructions.
             history: Message history.
             user_input: User speech input.
 
         Returns:
             str: Synthesizable response text.
         """
-        t0 = time.monotonic()
-        try:
-            logger.info("Generating response via primary Ollama LLM (timeout=%.1fs)...", self.timeout_seconds)
-            reply = await asyncio.wait_for(
-                self.primary.generate(system_prompt, history, user_input),
-                timeout=self.timeout_seconds,
-            )
-            elapsed_ms = int((time.monotonic() - t0) * 1000)
-            logger.info("Primary LLM completed in %d ms: '%s'", elapsed_ms, reply)
-            return reply
-        except (asyncio.TimeoutError, Exception) as exc:
-            elapsed_ms = int((time.monotonic() - t0) * 1000)
-            logger.warning(
-                "Primary LLM failed or exceeded timeout (%d ms) with error '%s'. Triggering Groq API fallback...",
-                elapsed_ms,
-                exc,
-            )
-            t_fallback = time.monotonic()
-            reply = await self.fallback.generate(system_prompt, history, user_input)
-            fallback_ms = int((time.monotonic() - t_fallback) * 1000)
-            logger.info("Fallback LLM completed in %d ms: '%s'", fallback_ms, reply)
-            return reply
+        for i, adapter in enumerate(self.chain):
+            adapter_name = adapter.__class__.__name__
+            model_info = getattr(adapter, "model", "")
+            t0 = time.monotonic()
+            try:
+                # Give local Ollama a quick timeout (1.0s) so it doesn't stall calls if offline
+                timeout = 1.0 if isinstance(adapter, OllamaLLM) else self.timeout_seconds
+                reply = await asyncio.wait_for(
+                    adapter.generate(system_prompt, history, user_input),
+                    timeout=timeout,
+                )
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+                logger.info("LLM tier %d (%s %s) succeeded in %d ms", i + 1, adapter_name, model_info, elapsed_ms)
+                return reply
+            except Exception as exc:
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+                logger.warning(
+                    "LLM tier %d (%s %s) failed in %d ms: %s. Advancing to next fallback tier...",
+                    i + 1,
+                    adapter_name,
+                    model_info,
+                    elapsed_ms,
+                    exc,
+                )
+
+        # Ultimate deterministic safety guarantee
+        return "Thank you for the update. We have recorded your response for Nirma University records."

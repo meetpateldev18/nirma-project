@@ -157,11 +157,10 @@ async def test_privilege_escalation_operator_blocked_from_admin_routes(
     Privilege Escalation Gate: Valid operator token attempting to call admin-restricted endpoints.
     Expected: Strictly rejected with 403 Forbidden.
     """
-    # 1. Campaign creation
-    resp1 = await async_client.post(
-        "/api/campaigns",
+    # 1. Global analytics dashboard access (restricted to admin)
+    resp1 = await async_client.get(
+        "/api/analytics/dashboard",
         headers=operator_headers,
-        json={"name": "Attacker Campaign", "script_id": 1},
     )
     assert resp1.status_code == 403
 

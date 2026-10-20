@@ -26,6 +26,18 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _get_audio_download_auth(audio_url: str) -> Optional[tuple[str, str]]:
+    """
+    Supplies HTTP Basic Auth credentials for protected carrier endpoints (e.g. Twilio media).
+
+    Twilio recording endpoints enforce HTTP Basic Auth when account media protection
+    is enabled. This helper attaches Twilio credentials when fetching from api.twilio.com.
+    """
+    if "api.twilio.com" in audio_url and settings.twilio_account_sid and settings.twilio_auth_token:
+        return (settings.twilio_account_sid, settings.twilio_auth_token)
+    return None
+
+
 class STTAdapter(ABC):
     """
     Abstract interface for Speech-to-Text transcription engines.
@@ -127,8 +139,9 @@ class IndicConformerSTT(STTAdapter):
             Exception: If audio downloading or inference fails.
         """
         logger.debug("Downloading audio for local IndicConformer STT: %s", audio_url)
+        auth = _get_audio_download_auth(audio_url)
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(audio_url)
+            resp = await client.get(audio_url, auth=auth)
             resp.raise_for_status()
             audio_bytes = resp.content
 
@@ -218,7 +231,8 @@ class SarvamSTT(STTAdapter):
         client = await self._get_client()
 
         # Step 1: Download audio buffer from carrier using pooled connection
-        audio_resp = await client.get(audio_url)
+        auth = _get_audio_download_auth(audio_url)
+        audio_resp = await client.get(audio_url, auth=auth)
         audio_resp.raise_for_status()
         audio_bytes = audio_resp.content
 

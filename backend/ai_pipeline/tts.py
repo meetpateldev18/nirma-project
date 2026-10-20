@@ -17,14 +17,16 @@ Dependencies:
 """
 
 import asyncio
+import base64
 import hashlib
 import logging
 import os
 import time
 import uuid
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import List, Optional
 
+import httpx
 from gtts import gTTS
 
 from backend.config import settings
@@ -191,9 +193,122 @@ class GoogleTTS(TTSAdapter):
         return f"{settings.base_url}/static/audio/{filename}"
 
 
+class GeminiTTS(TTSAdapter):
+    """
+    Google Gemini Speech Synthesis Engine (gemini-3.8-flash-lite-tts).
+
+    Generates natural-sounding voice WAV audio directly via Google's
+    generativelanguage v1beta API with zero local GPU VRAM requirement.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        cache_dir: Optional[str] = None,
+        timeout_seconds: float = 4.0,
+    ) -> None:
+        """
+        Initializes the Gemini TTS adapter.
+
+        Args:
+            api_key: Gemini API key (defaults to settings.gemini_api_key).
+            model: Model identifier (defaults to settings.gemini_tts_model).
+            cache_dir: Directory where generated WAV audio files are stored.
+            timeout_seconds: Network deadline before falling back.
+        """
+        self.api_key = (
+            api_key
+            if api_key is not None
+            else (settings.gemini_tts_api_key or settings.gemini_api_key)
+        )
+        self.model = model or settings.gemini_tts_model
+        self.cache_dir = cache_dir or settings.audio_cache_dir
+        self.timeout_seconds = timeout_seconds
+        os.makedirs(self.cache_dir, exist_ok=True)
+        self.endpoint = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        )
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Returns or lazily creates a persistent pooled AsyncClient for Gemini TTS."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self.timeout_seconds, connect=2.0),
+                limits=httpx.Limits(max_keepalive_connections=10, max_connections=30),
+            )
+        return self._client
+
+    async def aclose(self) -> None:
+        """Closes persistent HTTP connection pool."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    @staticmethod
+    def _sync_write_bytes(file_path: str, data: bytes) -> None:
+        """Threadpool helper to write raw WAV bytes to disk."""
+        with open(file_path, "wb") as f:
+            f.write(data)
+
+    async def synthesize(self, text: str, language: str = "hi") -> str:
+        """
+        Synthesizes text into speech WAV bytes and writes to the cache directory.
+
+        Args:
+            text: Utterance to vocalize.
+            language: Target language code.
+
+        Returns:
+            str: Publicly accessible URL for carrier playback.
+
+        Raises:
+            ValueError: If GEMINI_API_KEY is not configured or response is invalid.
+            httpx.HTTPError: If network request fails.
+        """
+        if not self.api_key or self.api_key.startswith("your_"):
+            raise ValueError("GEMINI_API_KEY is not configured for Gemini TTS.")
+
+        content_hash = hashlib.sha256(f"gemini_tts:{language.lower()}:{text.strip()}".encode("utf-8")).hexdigest()[:16]
+        filename = f"tts_gemini_{content_hash}.wav"
+        output_path = os.path.join(self.cache_dir, filename)
+
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            logger.info("Gemini TTS cache HIT for hash %s (served in 0 ms)", content_hash)
+            return f"{settings.base_url}/static/audio/{filename}"
+
+        payload = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {"responseModalities": ["AUDIO"]},
+        }
+
+        client = await self._get_client()
+        resp = await client.post(self.endpoint, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise ValueError(f"Gemini TTS returned no candidates: {data}")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts:
+            raise ValueError(f"Gemini TTS returned empty parts: {data}")
+
+        inline = parts[0].get("inlineData", {})
+        b64_data = inline.get("data")
+        if not b64_data:
+            raise ValueError("Gemini TTS response missing inlineData audio bytes.")
+
+        audio_bytes = base64.b64decode(b64_data)
+        await asyncio.to_thread(self._sync_write_bytes, output_path, audio_bytes)
+
+        return f"{settings.base_url}/static/audio/{filename}"
+
+
 class FallbackTTS(TTSAdapter):
     """
-    Composite TTS adapter providing seamless failover between local IndicF5 and Google TTS.
+    Composite TTS adapter providing seamless multi-tier failover between
+    Local IndicF5 -> Google Gemini Flash Lite TTS -> Google gTTS (free).
 
     Ensures that caller audio synthesis never times out during an active telephone call.
     """
@@ -202,23 +317,38 @@ class FallbackTTS(TTSAdapter):
         self,
         primary: Optional[TTSAdapter] = None,
         fallback: Optional[TTSAdapter] = None,
-        timeout_seconds: float = 2.5,
+        timeout_seconds: float = 3.0,
     ) -> None:
         """
-        Initializes the FallbackTTS composite.
+        Initializes the FallbackTTS composite cascade.
 
         Args:
-            primary: Primary local synthesis adapter (default: IndicF5TTS).
+            primary: Primary synthesis adapter (default: IndicF5TTS).
             fallback: Secondary synthesis adapter (default: GoogleTTS).
-            timeout_seconds: Execution deadline before switching to fallback (default: 2.5s).
+            timeout_seconds: Execution deadline before switching to fallback (default: 3.0s).
         """
-        self.primary = primary or IndicF5TTS()
-        self.fallback = fallback or GoogleTTS()
+        self.chain: List[TTSAdapter] = []
+
+        if primary is not None:
+            self.chain.append(primary)
+        else:
+            self.chain.append(IndicF5TTS())
+            tts_key = settings.gemini_tts_api_key or settings.gemini_api_key
+            if tts_key and not tts_key.startswith("your_"):
+                self.chain.append(GeminiTTS(api_key=tts_key, timeout_seconds=timeout_seconds))
+
+        if fallback is not None:
+            self.chain.append(fallback)
+        else:
+            self.chain.append(GoogleTTS())
+
+        self.primary = self.chain[0]
+        self.fallback = self.chain[1] if len(self.chain) > 1 else self.chain[0]
         self.timeout_seconds = timeout_seconds
 
     async def synthesize(self, text: str, language: str = "hi") -> str:
         """
-        Executes bounded speech synthesis with automatic fallback.
+        Executes bounded speech synthesis with automatic cascade fallback.
 
         Args:
             text: Utterance text.
@@ -227,25 +357,26 @@ class FallbackTTS(TTSAdapter):
         Returns:
             str: Public URL for generated audio.
         """
-        t0 = time.monotonic()
-        try:
-            logger.info("Attempting primary local TTS (timeout=%.1fs)...", self.timeout_seconds)
-            audio_url = await asyncio.wait_for(
-                self.primary.synthesize(text, language),
-                timeout=self.timeout_seconds,
-            )
-            elapsed_ms = int((time.monotonic() - t0) * 1000)
-            logger.info("Primary TTS completed in %d ms -> %s", elapsed_ms, audio_url)
-            return audio_url
-        except (asyncio.TimeoutError, Exception) as exc:
-            elapsed_ms = int((time.monotonic() - t0) * 1000)
-            logger.warning(
-                "Primary TTS failed or exceeded timeout (%d ms) with error '%s'. Triggering Google TTS fallback...",
-                elapsed_ms,
-                exc,
-            )
-            t_fallback = time.monotonic()
-            audio_url = await self.fallback.synthesize(text, language)
-            fallback_ms = int((time.monotonic() - t_fallback) * 1000)
-            logger.info("Fallback TTS completed in %d ms -> %s", fallback_ms, audio_url)
-            return audio_url
+        for i, adapter in enumerate(self.chain):
+            adapter_name = adapter.__class__.__name__
+            t0 = time.monotonic()
+            try:
+                audio_url = await asyncio.wait_for(
+                    adapter.synthesize(text, language),
+                    timeout=self.timeout_seconds,
+                )
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+                logger.info("TTS tier %d (%s) succeeded in %d ms -> %s", i + 1, adapter_name, elapsed_ms, audio_url)
+                return audio_url
+            except Exception as exc:
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+                logger.warning(
+                    "TTS tier %d (%s) failed in %d ms: %s. Advancing to next TTS tier...",
+                    i + 1,
+                    adapter_name,
+                    elapsed_ms,
+                    exc,
+                )
+
+        # Final absolute fallback directly via GoogleTTS
+        return await GoogleTTS().synthesize(text, language)

@@ -27,6 +27,10 @@ import os
 os.environ["APP_ENV"] = "testing"
 os.environ["DEBUG"] = "true"
 os.environ["AUDIO_CACHE_DIR"] = "/tmp/audio_cache"
+os.environ["PLIVO_AUTH_ID"] = "mock_plivo_auth"
+os.environ["PLIVO_AUTH_TOKEN"] = "mock_plivo_token"
+os.environ["TWILIO_ACCOUNT_SID"] = "mock_twilio_account_sid"
+os.environ["TWILIO_AUTH_TOKEN"] = "mock_twilio_auth_token"
 
 from typing import Any, AsyncGenerator, Dict, Generator, List, Optional
 import pytest

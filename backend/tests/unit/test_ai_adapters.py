@@ -17,6 +17,7 @@ import pytest
 from backend.ai_pipeline.llm import (
     TELEPHONY_VOICE_CONSTRAINT,
     FallbackLLM,
+    GeminiLLM,
     GroqLLM,
     LLMAdapter,
     OllamaLLM,
@@ -311,3 +312,125 @@ async def test_ai_pipeline_flags_exceeded_budget():
         assert result["latency"]["total_ms"] > 4000
     finally:
         time.monotonic = orig_monotonic
+
+
+# ------------------------------------------------------------------------------
+# Gemini LLM Tests
+# ------------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_gemini_llm_missing_api_key():
+    """Verifies that GeminiLLM raises ValueError when GEMINI_API_KEY is missing."""
+    adapter = GeminiLLM(api_key="")
+    with pytest.raises(ValueError, match="GEMINI_API_KEY is not configured"):
+        await adapter.generate("System prompt", [], "Hello")
+
+
+@pytest.mark.asyncio
+async def test_gemini_llm_successful_generation():
+    """Verifies that GeminiLLM sends correct REST payload and extracts synthesizable reply."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    import httpx
+
+    adapter = GeminiLLM(api_key="AIzaSyTestGeminiKey12345", model="gemini-2.5-flash")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": "Namaste, fee payment deadline is tomorrow."}]
+                }
+            }
+        ]
+    }
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_resp
+
+    with patch.object(adapter, "_get_client", return_value=mock_client):
+        reply = await adapter.generate(
+            system_prompt="You are Nirma fee assistant.",
+            history=[{"role": "user", "content": "Fee kab bharni hai?"}],
+            user_input="Bataiye",
+        )
+        assert reply == "Namaste, fee payment deadline is tomorrow."
+        mock_client.post.assert_called_once()
+        call_kwargs = mock_client.post.call_args
+        assert "key=AIzaSyTestGeminiKey12345" in call_kwargs[0][0]
+        assert "gemini-2.5-flash" in call_kwargs[0][0]
+
+
+@pytest.mark.asyncio
+async def test_rule_based_llm_deterministic_reply():
+    """Verifies that RuleBasedLLM always returns a valid fallback reply."""
+    from backend.ai_pipeline.llm import RuleBasedLLM
+
+    adapter = RuleBasedLLM()
+    reply = await adapter.generate(
+        system_prompt="system",
+        history=[],
+        user_input="hello",
+    )
+    assert "Nirma University" in reply
+
+
+@pytest.mark.asyncio
+async def test_gemini_tts_missing_api_key_raises_value_error():
+    """Verifies that GeminiTTS raises ValueError if API key is missing."""
+    from backend.ai_pipeline.tts import GeminiTTS
+
+    adapter = GeminiTTS(api_key="")
+    with pytest.raises(ValueError) as exc:
+        await adapter.synthesize("Hello")
+    assert "GEMINI_API_KEY" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_gemini_tts_synthesizes_audio_and_writes_wav(tmp_path):
+    """Verifies that GeminiTTS requests audio modalities, decodes WAV bytes, and caches file."""
+    import base64
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from backend.ai_pipeline.tts import GeminiTTS
+
+    cache_dir = str(tmp_path / "audio_cache")
+    adapter = GeminiTTS(
+        api_key="AIzaSyTestGeminiKey12345",
+        model="gemini-3.8-flash-lite-tts",
+        cache_dir=cache_dir,
+    )
+
+    dummy_wav_bytes = b"RIFF....WAVEfmt ....data...."
+    b64_dummy = base64.b64encode(dummy_wav_bytes).decode("ascii")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "audio/wav",
+                                "data": b64_dummy,
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_resp
+
+    with patch.object(adapter, "_get_client", return_value=mock_client):
+        url = await adapter.synthesize("Namaste Nirma student", language="hi")
+        assert "/static/audio/tts_gemini_" in url
+        assert url.endswith(".wav")
+        mock_client.post.assert_called_once()
+        payload = mock_client.post.call_args[1]["json"]
+        assert payload["generationConfig"]["responseModalities"] == ["AUDIO"]
+
+

@@ -19,6 +19,7 @@ async def seeded_call_task(
     db_session: AsyncSession,
     seed_script: CallScript,
     seed_students: list,
+    seed_users: dict,
 ) -> CallTask:
     """Seeds a persistent campaign and call task with an attached transcript log."""
     campaign = CallCampaign(
@@ -26,6 +27,7 @@ async def seeded_call_task(
         script_id=seed_script.id,
         scheduled_at=utc_now(),
         status="running",
+        created_by=seed_users["operator"].id,
     )
     db_session.add(campaign)
     await db_session.commit()
@@ -126,10 +128,16 @@ async def test_get_call_transcript_not_found(
     db_session: AsyncSession,
     seed_script: CallScript,
     seed_students: list,
+    seed_users: dict,
 ):
     """Verifies GET /api/calls/{task_id}/transcript returns HTTP 404 when CallLog record does not exist."""
     # Create task without log
-    campaign = CallCampaign(name="No Log Camp", script_id=seed_script.id, scheduled_at=utc_now())
+    campaign = CallCampaign(
+        name="No Log Camp",
+        script_id=seed_script.id,
+        scheduled_at=utc_now(),
+        created_by=seed_users["operator"].id,
+    )
     db_session.add(campaign)
     await db_session.commit()
     await db_session.refresh(campaign)

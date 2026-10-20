@@ -28,7 +28,7 @@ from backend.config import settings
 from backend.database.models import CallCampaign, CallTask, utc_now
 from backend.database.session import get_sync_session
 from backend.scheduler.celery_app import celery_app
-from backend.telephony.plivo_adapter import PlivoAdapter
+from backend.telephony import get_telephony_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -131,19 +131,22 @@ def place_call_task(self, call_task_id: int) -> Optional[str]:
             logger.warning("CallTask ID %d has status '%s'. Skipping call placement.", call_task_id, task.status)
             return None
 
-        # Build dynamic callback URLs bound to Nirma institutional domain
-        answer_url = settings.build_webhook_url(f"/webhook/plivo/answer?task_id={call_task_id}")
-        hangup_url = settings.build_webhook_url(f"/webhook/plivo/hangup?task_id={call_task_id}")
+        # Build dynamic callback URLs bound to Nirma institutional domain for active carrier
+        carrier = settings.telephony_provider.strip().lower()
+        webhook_urls = settings.get_carrier_webhook_urls(call_task_id)
+        answer_url = webhook_urls["answer_url"]
+        hangup_url = webhook_urls["hangup_url"]
 
-        adapter = PlivoAdapter(settings.plivo_auth_id, settings.plivo_auth_token)
+        adapter = get_telephony_adapter(carrier)
+        caller_id = settings.active_caller_id
 
         try:
-            # Execute Plivo API call synchronously with zero asyncio event loop overhead
+            # Execute telephony carrier REST call synchronously with zero asyncio event loop overhead
             result = adapter.place_call_sync(
                 to_number=task.student_phone,
                 answer_url=answer_url,
                 hangup_url=hangup_url,
-                caller_id=settings.plivo_caller_id,
+                caller_id=caller_id,
             )
 
             if result.status == "queued":
@@ -151,7 +154,12 @@ def place_call_task(self, call_task_id: int) -> Optional[str]:
                 task.plivo_uuid = result.call_uuid
                 task.placed_at = utc_now()
                 db.commit()
-                logger.info("Call successfully dispatched -> TaskID: %d, PlivoUUID: %s", call_task_id, result.call_uuid)
+                logger.info(
+                    "Call successfully dispatched via %s -> TaskID: %d, CarrierUUID: %s",
+                    carrier.upper(),
+                    call_task_id,
+                    result.call_uuid,
+                )
                 return result.call_uuid
             else:
                 task.status = "failed"

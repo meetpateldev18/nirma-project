@@ -395,6 +395,23 @@ export async function getOutcomeDistribution(): Promise<OutcomeDistribution> {
   return request<OutcomeDistribution>('/api/analytics/outcomes');
 }
 
+export interface SystemStatus {
+  pstn_status: 'active' | 'dummy' | 'error';
+  pstn_label: string;
+  pstn_caller_id: string;
+  llm_provider: 'ollama' | 'groq' | 'gemini' | 'fallback';
+  llm_label: string;
+  llm_model: string;
+  trai_window: string;
+  trai_is_open: boolean;
+  trai_status: string;
+  current_ist: string;
+}
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  return request<SystemStatus>('/api/system/status');
+}
+
 // ==============================================================================
 // Real-time WebSocket
 // ==============================================================================

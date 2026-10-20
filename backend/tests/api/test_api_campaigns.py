@@ -32,7 +32,7 @@ async def test_list_campaigns_authenticated_empty(async_client: AsyncClient, ope
 @pytest.mark.asyncio
 async def test_list_campaigns_pagination_and_filtering(
     async_client: AsyncClient,
-    operator_headers: dict,
+    admin_headers: dict,
     db_session: AsyncSession,
     seed_script: CallScript,
 ):
@@ -44,7 +44,7 @@ async def test_list_campaigns_pagination_and_filtering(
     await db_session.commit()
 
     # Query with status filter
-    resp = await async_client.get("/api/campaigns?status=running", headers=operator_headers)
+    resp = await async_client.get("/api/campaigns?status=running", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
@@ -52,7 +52,7 @@ async def test_list_campaigns_pagination_and_filtering(
     assert data["items"][0]["name"] == "Running Camp"
 
     # Query with pagination limit
-    resp_limit = await async_client.get("/api/campaigns?limit=2&page=1", headers=operator_headers)
+    resp_limit = await async_client.get("/api/campaigns?limit=2&page=1", headers=admin_headers)
     assert resp_limit.status_code == 200
     assert len(resp_limit.json()["items"]) == 2
     assert resp_limit.json()["total"] == 3
@@ -98,12 +98,12 @@ async def test_create_campaign_admin_success(
 
 
 @pytest.mark.asyncio
-async def test_create_campaign_operator_forbidden(
+async def test_create_campaign_operator_allowed(
     async_client: AsyncClient,
     operator_headers: dict,
     seed_script: CallScript,
 ):
-    """Verifies non-admin staff member is rejected with HTTP 403 Forbidden."""
+    """Verifies faculty/operator staff member can create scoped campaigns (201 Created)."""
     payload = {
         "name": "Operator Campaign Attempt",
         "script_id": seed_script.id,
@@ -111,8 +111,8 @@ async def test_create_campaign_operator_forbidden(
         "scheduled_at": "2026-10-20T10:00:00Z",
     }
     response = await async_client.post("/api/campaigns", json=payload, headers=operator_headers)
-    assert response.status_code == 403
-    assert "administrator" in response.json()["detail"].lower()
+    assert response.status_code == 201
+    assert response.json()["name"] == "Operator Campaign Attempt"
 
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_create_campaign_invalid_script_id(async_client: AsyncClient, admi
 @pytest.mark.asyncio
 async def test_get_campaign_details_and_status_counts(
     async_client: AsyncClient,
-    operator_headers: dict,
+    admin_headers: dict,
     db_session: AsyncSession,
     seed_script: CallScript,
     seed_students: list,
@@ -155,7 +155,7 @@ async def test_get_campaign_details_and_status_counts(
     db_session.add_all([t1, t2, t3])
     await db_session.commit()
 
-    response = await async_client.get(f"/api/campaigns/{campaign.id}", headers=operator_headers)
+    response = await async_client.get(f"/api/campaigns/{campaign.id}", headers=admin_headers)
     assert response.status_code == 200
 
     data = response.json()

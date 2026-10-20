@@ -15,6 +15,7 @@ Dependencies:
     - sqlalchemy >= 2.0
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -200,6 +201,23 @@ async def create_campaign(
 
     task_count = await session.run_sync(lambda _: _sync_generate_tasks())
     logger.info("Campaign ID %d created by %s. Generated %d tasks.", campaign.id, current_user.email, task_count)
+
+    # Automatically dispatch tasks immediately so call dials without delay
+    if task_count > 0:
+        def _sync_auto_dispatch():
+            from backend.scheduler.tasks import place_call_task
+            with get_sync_session() as sync_db:
+                due_tasks = sync_db.query(CallTask).filter(
+                    CallTask.campaign_id == campaign.id,
+                    CallTask.status == "pending"
+                ).all()
+                for dt in due_tasks:
+                    try:
+                        place_call_task(dt.id)
+                    except Exception as err:
+                        logger.error("Auto-dispatch error for task %d: %s", dt.id, err)
+
+        asyncio.create_task(asyncio.to_thread(_sync_auto_dispatch))
 
     response = CampaignResponse.model_validate(campaign, from_attributes=True)
     response.task_counts = {"total": task_count, "pending": task_count}

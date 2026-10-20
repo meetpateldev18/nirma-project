@@ -26,12 +26,22 @@ async def test_get_dashboard_unauthenticated(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_dashboard_empty_db_returns_zeros(
+async def test_get_dashboard_forbidden_for_operator(
     async_client: AsyncClient,
     operator_headers: Dict[str, str],
 ):
-    """Verifies dashboard KPIs return clean zero values when no campaigns/calls exist."""
+    """Verifies operators/faculty are blocked from viewing global analytics (403)."""
     response = await async_client.get("/api/analytics/dashboard", headers=operator_headers)
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_empty_db_returns_zeros(
+    async_client: AsyncClient,
+    admin_headers: Dict[str, str],
+):
+    """Verifies dashboard KPIs return clean zero values when no campaigns/calls exist."""
+    response = await async_client.get("/api/analytics/dashboard", headers=admin_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -48,7 +58,7 @@ async def test_get_dashboard_empty_db_returns_zeros(
 @pytest.mark.asyncio
 async def test_get_dashboard_computes_kpis(
     async_client: AsyncClient,
-    operator_headers: Dict[str, str],
+    admin_headers: Dict[str, str],
     db_session: AsyncSession,
     seed_students: List[Student],
 ):
@@ -126,7 +136,7 @@ async def test_get_dashboard_computes_kpis(
     db_session.add(log)
     await db_session.commit()
 
-    response = await async_client.get("/api/analytics/dashboard", headers=operator_headers)
+    response = await async_client.get("/api/analytics/dashboard", headers=admin_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -152,7 +162,7 @@ async def test_get_volume_unauthenticated(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_get_volume_with_data(
     async_client: AsyncClient,
-    operator_headers: Dict[str, str],
+    admin_headers: Dict[str, str],
     db_session: AsyncSession,
     seed_students: List[Student],
 ):
@@ -184,7 +194,7 @@ async def test_get_volume_with_data(
     db_session.add(t1)
     await db_session.commit()
 
-    response = await async_client.get("/api/analytics/volume?days=7", headers=operator_headers)
+    response = await async_client.get("/api/analytics/volume?days=7", headers=admin_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -206,7 +216,7 @@ async def test_get_outcomes_unauthenticated(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_get_outcomes_distribution(
     async_client: AsyncClient,
-    operator_headers: Dict[str, str],
+    admin_headers: Dict[str, str],
     db_session: AsyncSession,
     seed_students: List[Student],
 ):
@@ -248,7 +258,7 @@ async def test_get_outcomes_distribution(
     db_session.add_all([t1, t2])
     await db_session.commit()
 
-    response = await async_client.get("/api/analytics/outcomes", headers=operator_headers)
+    response = await async_client.get("/api/analytics/outcomes", headers=admin_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -260,7 +270,7 @@ async def test_get_outcomes_distribution(
 @pytest.mark.asyncio
 async def test_get_latency_metrics(
     async_client: AsyncClient,
-    operator_headers: Dict[str, str],
+    admin_headers: Dict[str, str],
     db_session: AsyncSession,
     seed_students: List[Student],
 ):
@@ -321,7 +331,7 @@ async def test_get_latency_metrics(
     db_session.add_all([log1, log2])
     await db_session.commit()
 
-    response = await async_client.get("/api/analytics/latency", headers=operator_headers)
+    response = await async_client.get("/api/analytics/latency", headers=admin_headers)
     assert response.status_code == 200
     data = response.json()
 

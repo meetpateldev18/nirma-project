@@ -15,7 +15,7 @@ Downstream dependencies:
     - backend.scheduler.*
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 import os
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -119,13 +119,29 @@ class Settings(BaseSettings):
     )
 
     # --------------------------------------------------------------------------
-    # Telephony Provider (Plivo)
+    # Telephony Providers (Plivo & Twilio)
     # --------------------------------------------------------------------------
+    telephony_provider: str = Field(
+        default="plivo",
+        description="Active PSTN telephony carrier provider: 'plivo' or 'twilio'",
+    )
     plivo_auth_id: str = Field(default="", description="Plivo Authentication ID")
     plivo_auth_token: str = Field(default="", description="Plivo Authentication Token")
     plivo_caller_id: str = Field(
         default="+918866241204",
-        description="Registered E.164 Caller ID matching carrier credentials",
+        description="Registered E.164 Caller ID matching Plivo credentials",
+    )
+    twilio_account_sid: str = Field(
+        default="",
+        description="Twilio Account SID (e.g. ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)",
+    )
+    twilio_auth_token: str = Field(
+        default="",
+        description="Twilio Cryptographic Authentication Token",
+    )
+    twilio_caller_id: str = Field(
+        default="+918866241204",
+        description="Registered E.164 Caller ID matching Twilio credentials",
     )
 
     # --------------------------------------------------------------------------
@@ -153,6 +169,23 @@ class Settings(BaseSettings):
     # --------------------------------------------------------------------------
     sarvam_api_key: str = Field(default="", description="API key for Sarvam AI cloud STT fallback")
     groq_api_key: str = Field(default="", description="API key for Groq cloud LLM fallback")
+    gemini_api_key: str = Field(default="", description="API key for Google Gemini LLM")
+    gemini_tts_api_key: str = Field(
+        default="",
+        description="Dedicated Google Gemini API key for TTS audio synthesis (falls back to gemini_api_key)",
+    )
+    gemini_model: str = Field(
+        default="gemini-3.8-flash",
+        description="Primary Google Gemini model identifier (e.g. 'gemini-3.8-flash')",
+    )
+    gemini_fallback_model: str = Field(
+        default="gemini-3.5-flash-lite",
+        description="Fast fallback Gemini model for sub-second failover (e.g. 'gemini-3.5-flash-lite')",
+    )
+    gemini_tts_model: str = Field(
+        default="gemini-3.8-flash-lite-tts",
+        description="Gemini voice audio synthesis model (e.g. 'gemini-3.8-flash-lite-tts')",
+    )
 
     # --------------------------------------------------------------------------
     # Security & JWT Tokens
@@ -183,17 +216,49 @@ class Settings(BaseSettings):
     def cors_origins(self) -> List[str]:
         """
         Parses comma-separated allowed origins into a sanitized list of strings.
-
-        Returns:
-            List[str]: Parsed and trimmed origin strings for CORS middleware.
         """
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def is_twilio_active(self) -> bool:
+        """
+        Returns True if Twilio is configured as the active PSTN telephony carrier.
+        """
+        return self.telephony_provider.strip().lower() == "twilio"
+
+    @property
+    def active_caller_id(self) -> str:
+        """
+        Returns the registered caller ID matching the active telephony carrier.
+
+        Returns:
+            str: E.164 phone number configured for current provider.
+        """
+        if self.is_twilio_active:
+            return self.twilio_caller_id
+        return self.plivo_caller_id
+
+    def get_carrier_webhook_urls(self, task_id: int) -> Dict[str, str]:
+        """
+        Dynamically constructs answer and hangup webhook URLs matching the active carrier.
+
+        Args:
+            task_id: Internal primary key identifier of the CallTask.
+
+        Returns:
+            Dict[str, str]: Map containing 'answer_url' and 'hangup_url'.
+        """
+        carrier = "twilio" if self.is_twilio_active else "plivo"
+        return {
+            "answer_url": self.build_webhook_url(f"/webhook/{carrier}/answer?task_id={task_id}"),
+            "hangup_url": self.build_webhook_url(f"/webhook/{carrier}/hangup?task_id={task_id}"),
+        }
 
     def build_webhook_url(self, endpoint_path: str) -> str:
         """
         Dynamically constructs an absolute public webhook callback URL.
 
-        Ensures carrier webhooks are always bound to the university's institutional
+        Ensures carrier webhooks are always bound to the university institutional
         domain without hardcoding localhost or static IP addresses.
 
         Args:

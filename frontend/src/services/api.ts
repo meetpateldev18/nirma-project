@@ -140,7 +140,7 @@ export interface CallTask {
    *  - 'failed': Call rejected, carrier timeout, or busy without answer.
    */
   status: 'pending' | 'ringing' | 'in_progress' | 'completed' | 'failed';
-  /** Unique carrier request UUID assigned by Plivo telephony gateway. */
+  /** Unique carrier request identifier assigned by telephony gateway (Plivo CallUUID / Twilio CallSid). */
   plivo_uuid?: string;
   /** Current retry attempt count for this specific recipient. */
   retry_count: number;
@@ -189,7 +189,7 @@ export interface CallLog {
   transcript: TranscriptTurn[];
   /** Name of speech recognition engine utilized ('IndicConformer (0.6B)' | 'Sarvam AI'). */
   stt_provider: string;
-  /** Name of language model engine utilized ('Qwen-14B (Ollama Q4)' | 'Groq Cloud'). */
+  /** Name of language model engine utilized ('Qwen-14B (Ollama Q4)' | 'Gemini Flash' | 'Groq Cloud'). */
   llm_provider: string;
   /** Name of speech synthesis engine utilized ('IndicF5 (Local)' | 'Google Cloud TTS'). */
   tts_provider: string;

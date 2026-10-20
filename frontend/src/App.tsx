@@ -38,8 +38,24 @@ function AuthenticatedApp() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [volume, setVolume] = useState<DailyVolume[]>([]);
   const [outcomes, setOutcomes] = useState<OutcomeDistribution | null>(null);
+  const [systemStatus, setSystemStatus] = useState<api.SystemStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadStatus = () => {
+      api.getSystemStatus()
+        .then((data) => { if (!cancelled) setSystemStatus(data); })
+        .catch(() => {});
+    };
+    loadStatus();
+    const timer = setInterval(loadStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   const refreshAnalytics = useCallback(async () => {
     if (!isAdmin) return;
@@ -126,6 +142,35 @@ function AuthenticatedApp() {
         ]
   ), [isAdmin, activeCallCount]);
 
+  // Live clock formatted in Indian Standard Time (IST)
+  const [istTime, setIstTime] = useState<string>('');
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setIstTime(now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const activeTabMeta = useMemo(() => {
+    switch (activeTab) {
+      case 'dashboard':
+        return { label: 'Overview', desc: 'Real-time outbound campaign analytics, KPI trends, and call volume' };
+      case 'telemetry':
+        return { label: 'Live Telemetry & Streams', desc: 'Real-time PSTN carrier channel monitor, live audio waveforms, and turn latency' };
+      case 'campaigns':
+        return { label: 'Call Studio', desc: 'Reason-driven AI call dispatching for individual students or academic cohorts' };
+      case 'transcripts':
+        return { label: 'Call Records & Transcripts', desc: 'Complete conversational audio history, ASR transcripts, and retry dispatch' };
+      case 'users':
+        return { label: 'Faculty Access Control', desc: 'Manage departmental faculty permissions and operator access accounts' };
+      default:
+        return { label: 'Dashboard', desc: 'Nirma University AI Voice Agent • High-Performance Computing Platform' };
+    }
+  }, [activeTab]);
+
   return (
     <div className="min-h-screen bg-canvas text-ink flex flex-col lg:flex-row font-sans antialiased">
       <Toaster position="top-right" richColors />
@@ -137,9 +182,68 @@ function AuthenticatedApp() {
         userName={user?.name ?? 'Staff'}
         userRole={user?.role ?? 'operator'}
         onLogout={logout}
+        systemStatus={systemStatus}
       />
 
-      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 focus:outline-none">
+      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-6 lg:py-7 focus:outline-none flex flex-col">
+        {/* Top Header Bar */}
+        <header className="bg-white rounded-2xl border border-hairline shadow-[0_1px_3px_rgba(15,23,42,0.04)] px-5 py-3.5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2 text-[11px] font-mono text-mute tracking-wide uppercase">
+              <span>HPC Mission Control</span>
+              <span className="text-hairline-strong">/</span>
+              <span className="text-primary font-semibold">{activeTabMeta.label}</span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-ink font-sans">
+              {activeTabMeta.label}
+            </h1>
+            <p className="text-xs text-body line-clamp-1">
+              {activeTabMeta.desc}
+            </p>
+          </div>
+
+          {/* Right Status & Actions Telemetry */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Live IST Clock */}
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-canvas-elevated border border-hairline text-xs font-mono text-ink">
+              <span className="w-1.5 h-1.5 rounded-full bg-telemetry-cyan animate-pulse" />
+              <span className="tabular-nums font-medium">{istTime || 'IST Active'}</span>
+            </div>
+
+            {/* Live Carrier Pill */}
+            {systemStatus && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-canvas-elevated border border-hairline text-xs font-mono">
+                <span className={`w-1.5 h-1.5 rounded-full ${systemStatus.pstn_status === 'active' ? 'bg-live-pulse' : 'bg-telemetry-amber'} animate-pulse`} />
+                <span className="text-ink font-medium">{systemStatus.pstn_label}</span>
+              </div>
+            )}
+
+            {/* Active Live Calls Count */}
+            {activeCallCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('telemetry')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-live-pulse/10 border border-live-pulse/30 text-live-pulse text-xs font-medium hover:bg-live-pulse/20 transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-live-pulse animate-ping" />
+                <span className="tabular-nums font-semibold">{activeCallCount} Live Call{activeCallCount === 1 ? '' : 's'}</span>
+              </button>
+            )}
+
+            {/* Quick Call Action (if not already on Call Studio) */}
+            {activeTab !== 'campaigns' && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('campaigns')}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-sm transition-all active:scale-[0.98]"
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                <span>New Call</span>
+              </button>
+            )}
+          </div>
+        </header>
+
         {isLoading ? (
           <ViewFallback />
         ) : loadError ? (

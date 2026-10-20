@@ -44,7 +44,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
 
   const handleHangup = React.useCallback((task: CallTask) => {
     toast.error(`Call Terminated`, {
-      description: `Carrier UUID ${task.plivo_uuid || 'PSTN'} disconnected by operator for ${task.student_name}.`,
+      description: `Carrier Call ID ${task.plivo_uuid || 'PSTN'} disconnected by operator for ${task.student_name}.`,
     });
   }, []);
 
@@ -165,7 +165,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
 
                   {isRinging && (
                     <div className="mt-2.5 pt-2 border-t border-hairline-subtle flex items-center justify-between text-[11px] text-telemetry-amber font-mono">
-                      <span>Dialing recipient via Plivo carrier...</span>
+                      <span>Dialing recipient via telecom carrier...</span>
                       <span className="animate-pulse" aria-hidden="true">● ● ●</span>
                     </div>
                   )}
@@ -201,7 +201,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                     </Badge>
                   </div>
                   <CardDescription className="text-xs text-body mt-1 font-mono">
-                    Phone: <span className="text-ink tabular-nums">{selectedTask.student_phone}</span> • Carrier UUID: <span className="text-mute tabular-nums">{selectedTask.plivo_uuid || 'N/A'}</span>
+                    Phone: <span className="text-ink tabular-nums">{selectedTask.student_phone}</span> • Carrier Call ID: <span className="text-mute tabular-nums">{selectedTask.plivo_uuid || 'N/A'}</span>
                   </CardDescription>
                 </div>
 

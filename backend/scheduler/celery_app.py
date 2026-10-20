@@ -26,20 +26,28 @@ celery_app = Celery(
 )
 
 # Configure Celery serialization and worker execution invariants
-celery_app.conf.update(
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    timezone="Asia/Kolkata",
-    enable_utc=True,
+celery_conf = {
+    "task_serializer": "json",
+    "result_serializer": "json",
+    "accept_content": ["json"],
+    "timezone": "Asia/Kolkata",
+    "enable_utc": True,
     # Worker safety: Acknowledge late so lost worker tasks are re-queued automatically
-    task_acks_late=True,
-    task_reject_on_worker_lost=True,
+    "task_acks_late": True,
+    "task_reject_on_worker_lost": True,
     # Rate limits & concurrency controls
-    worker_prefetch_multiplier=1,
-    task_time_limit=300,        # Hard timeout: 5 minutes max per call dispatch
-    task_soft_time_limit=240,   # Soft timeout warning: 4 minutes
-)
+    "worker_prefetch_multiplier": 1,
+    "task_time_limit": 300,        # Hard timeout: 5 minutes max per call dispatch
+    "task_soft_time_limit": 240,   # Soft timeout warning: 4 minutes
+}
+
+import ssl
+if settings.celery_broker_url.startswith("rediss://"):
+    celery_conf["broker_use_ssl"] = {"ssl_cert_reqs": ssl.CERT_NONE}
+if settings.celery_result_backend.startswith("rediss://"):
+    celery_conf["redis_backend_use_ssl"] = {"ssl_cert_reqs": ssl.CERT_NONE}
+
+celery_app.conf.update(celery_conf)
 
 # Define Celery Beat periodic schedule
 celery_app.conf.beat_schedule = {

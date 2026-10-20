@@ -63,9 +63,77 @@ def generate_test_wav_bytes() -> bytes:
     return buffer.getvalue()
 
 
+async def verify_gemini(gemini_key: str, model: str = "gemini-3.8-flash"):
+    print("\n" + "=" * 60)
+    print("1. VERIFYING GOOGLE GEMINI CLOUD LLM & TTS MODELS")
+    print("=" * 60)
+    if not gemini_key or "your_gemini" in gemini_key:
+        print("❌ GEMINI_API_KEY is missing or placeholder.")
+        return False
+
+    print(f"Key Prefix: {gemini_key[:8]}...{gemini_key[-4:]}")
+
+    # 1. Test Text Model (3.8-flash or 3.5-flash-lite)
+    tested_models = [model, "gemini-3.5-flash-lite"] if model != "gemini-3.5-flash-lite" else [model]
+    text_ok = False
+    for m in tested_models:
+        print(f"\n--- Testing LLM Reasoning: {m} ---")
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={gemini_key}"
+        payload = {
+            "system_instruction": {"parts": [{"text": "You are Nirma University AI voice caller. Answer in 1 short sentence."}]},
+            "contents": [{"role": "user", "parts": [{"text": "Hello, please confirm you are online and working."}]}],
+            "generationConfig": {"maxOutputTokens": 40, "temperature": 0.2},
+        }
+
+        t0 = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.post(endpoint, json=payload)
+                latency = (time.time() - t0) * 1000
+                if resp.status_code == 200:
+                    data = resp.json()
+                    content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    print(f"✅ STATUS: SUCCESS (HTTP 200)")
+                    print(f"⏱️ LATENCY: {latency:.1f} ms")
+                    print(f"🤖 MODEL RESPONSE: \"{content}\"")
+                    text_ok = True
+                    break
+                else:
+                    print(f"⚠️ STATUS: {resp.status_code} ({resp.text[:120]})")
+        except Exception as exc:
+            print(f"⚠️ {m} timeout or error: {exc}")
+
+    # 2. Test Gemini Audio Synthesis (gemini-3.8-flash-lite-tts)
+    print(f"\n--- Testing Audio Synthesis: gemini-3.8-flash-lite-tts ---")
+    tts_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-lite-tts:generateContent?key={gemini_key}"
+    tts_payload = {
+        "contents": [{"parts": [{"text": "Hello, this is Nirma University AI assistant."}]}],
+        "generationConfig": {"responseModalities": ["AUDIO"]},
+    }
+    t0 = time.time()
+    tts_ok = False
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(tts_url, json=tts_payload)
+            latency = (time.time() - t0) * 1000
+            if resp.status_code == 200:
+                data = resp.json()
+                b64_bytes = data["candidates"][0]["content"]["parts"][0]["inlineData"]["data"]
+                print(f"✅ STATUS: SUCCESS (HTTP 200)")
+                print(f"⏱️ TTS LATENCY: {latency:.1f} ms")
+                print(f"🔊 AUDIO GENERATED: {len(b64_bytes)} base64 chars (native audio/wav)")
+                tts_ok = True
+            else:
+                print(f"⚠️ TTS STATUS: {resp.status_code} ({resp.text[:120]})")
+    except Exception as exc:
+        print(f"⚠️ Gemini TTS error: {exc}")
+
+    return text_ok and tts_ok
+
+
 async def verify_groq(groq_key: str):
     print("\n" + "=" * 60)
-    print("1. VERIFYING GROQ CLOUD LLM API")
+    print("2. VERIFYING GROQ CLOUD LLM API")
     print("=" * 60)
     if not groq_key or "your_groq" in groq_key:
         print("❌ GROQ_API_KEY is missing or placeholder.")
@@ -75,6 +143,7 @@ async def verify_groq(groq_key: str):
     headers = {
         "Authorization": f"Bearer {groq_key}",
         "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
     }
     payload = {
         "model": "qwen/qwen3.8-27b",
@@ -279,12 +348,56 @@ def verify_plivo():
     return True
 
 
+def verify_twilio(account_sid: str, auth_token: str, caller_id: str):
+    print("\n" + "=" * 60)
+    print("6. VERIFYING TWILIO TELEPHONY ADAPTER & ACCOUNT")
+    print("=" * 60)
+    if not account_sid or not auth_token or "your_" in account_sid:
+        print("❌ Twilio credentials missing in .env.")
+        return False
+
+    print(f"Account SID: {account_sid[:8]}...{account_sid[-4:]}")
+    print(f"Caller ID:   {caller_id or 'Not Configured'}")
+
+    # 1. Probe Live Twilio Account API
+    try:
+        from twilio.rest import Client
+        client = Client(account_sid, auth_token)
+        account = client.api.v2010.accounts(account_sid).fetch()
+        print(f"✅ TWILIO ACCOUNT: {account.status.upper()} (Friendly Name: '{account.friendly_name}')")
+
+        try:
+            balance = client.balance.fetch()
+            print(f"💰 ACCOUNT BALANCE: {balance.balance} {balance.currency}")
+        except Exception:
+            pass
+
+        incoming = client.incoming_phone_numbers.list(limit=5)
+        numbers = [n.phone_number for n in incoming]
+        if numbers:
+            print(f"📞 PROVISIONED PHONE NUMBERS: {numbers}")
+            print(f"   (Use one of these numbers as your TWILIO_CALLER_ID in .env)")
+        else:
+            print("⚠️ PROVISIONED PHONE NUMBERS: None found.")
+            print("👉 ACTION REQUIRED: Go to https://console.twilio.com and click 'Get a phone number'")
+            print("   to claim your free trial number, then set it as TWILIO_CALLER_ID in .env")
+
+        return True
+    except Exception as exc:
+        print(f"❌ TWILIO API AUTHENTICATION FAILED: {exc}")
+        return False
+
+
 async def main():
     env = load_env()
     print("=" * 60)
     print("NIRMA AI CALL AGENT — END-TO-END CREDENTIAL VERIFICATION")
     print("=" * 60)
 
+    gem_ok = await verify_gemini(
+        env.get("GEMINI_API_KEY", ""),
+        env.get("GEMINI_MODEL", "gemini-3.8-flash"),
+    )
     g_ok = await verify_groq(env.get("GROQ_API_KEY", ""))
     s_ok = await verify_sarvam(env.get("SARVAM_API_KEY", ""))
     db_ok = await verify_supabase(env.get("SYNC_DATABASE_URL", ""), env.get("DATABASE_URL", ""))
@@ -294,15 +407,22 @@ async def main():
         env.get("UPSTASH_REDIS_REST_TOKEN", ""),
     )
     p_ok = verify_plivo()
+    tw_ok = verify_twilio(
+        env.get("TWILIO_ACCOUNT_SID", ""),
+        env.get("TWILIO_AUTH_TOKEN", ""),
+        env.get("TWILIO_CALLER_ID", ""),
+    )
 
     print("\n" + "=" * 60)
     print("FINAL SUMMARY REPORT")
     print("=" * 60)
-    print(f"1. Groq Cloud LLM (Conversational AI):    {'🟢 OPERATIONAL' if g_ok else '🔴 FAILED'}")
-    print(f"2. Sarvam AI (Speech-to-Text / ASR):       {'🟢 OPERATIONAL' if s_ok else '🔴 FAILED'}")
-    print(f"3. Supabase PostgreSQL (Database Cloud):   {'🟢 OPERATIONAL' if db_ok else '🔴 FAILED'}")
-    print(f"4. Upstash Redis (Serverless Cache):       {'🟢 OPERATIONAL' if r_ok else '🔴 FAILED'}")
-    print(f"5. Plivo Telephony (Sandbox Simulator):    {'🟢 OPERATIONAL' if p_ok else '🔴 FAILED'}")
+    print(f"1. Google Gemini (LLM & Native Audio TTS): {'🟢 OPERATIONAL' if gem_ok else '🔴 FAILED / NOT SET'}")
+    print(f"2. Groq Cloud LLM (Secondary LLM Backup):  {'🟢 OPERATIONAL' if g_ok else '🔴 FAILED / NOT SET'}")
+    print(f"3. Sarvam AI (Speech-to-Text / ASR):       {'🟢 OPERATIONAL' if s_ok else '🔴 FAILED / NOT SET'}")
+    print(f"4. Supabase PostgreSQL (Database Cloud):   {'🟢 OPERATIONAL' if db_ok else '🔴 FAILED'}")
+    print(f"5. Upstash Redis (Serverless Cache):       {'🟢 OPERATIONAL' if r_ok else '🔴 FAILED'}")
+    print(f"6. Plivo Telephony (Primary Indian PSTN):  {'🟢 OPERATIONAL' if p_ok else '🔴 FAILED'}")
+    print(f"7. Twilio Telephony (Trial & Global PSTN): {'🟢 OPERATIONAL' if tw_ok else '🔴 FAILED'}")
     print("=" * 60)
 
 

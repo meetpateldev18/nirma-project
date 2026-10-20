@@ -19,7 +19,8 @@ Downstream dependencies:
 import os
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Dict
+from typing import AsyncGenerator, Dict, Any
+from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +35,10 @@ from backend.api.campaigns import router as campaigns_router
 from backend.api.students import router as students_router
 from backend.config import settings
 from backend.database.session import AsyncSessionLocal
-from backend.telephony.webhook_handler import router as webhook_router
+from backend.telephony.webhook_handler import (
+    router as webhook_router,
+    twilio_router as twilio_webhook_router,
+)
 from backend.websocket.manager import router as ws_router
 
 # Configure root logger
@@ -122,6 +126,7 @@ app.include_router(calls_router)
 app.include_router(students_router)
 app.include_router(analytics_router)
 app.include_router(webhook_router)
+app.include_router(twilio_webhook_router)
 app.include_router(ws_router)
 
 
@@ -151,3 +156,98 @@ async def health_check() -> Dict[str, str]:
         "database": db_status,
         "base_url": settings.base_url,
     }
+
+
+class SystemStatusResponse(BaseModel):
+    """Dynamic operational telemetry for PSTN carrier, LLM inference, and TRAI compliance."""
+
+    pstn_status: str = Field(..., description="'active' | 'dummy' | 'error'")
+    pstn_label: str = Field(..., description="Display label for PSTN gateway")
+    pstn_caller_id: str = Field(..., description="Configured caller ID")
+    llm_provider: str = Field(..., description="'ollama' | 'groq' | 'fallback'")
+    llm_label: str = Field(..., description="Display label for active LLM")
+    llm_model: str = Field(..., description="Active LLM model name")
+    trai_window: str = Field(default="09:00 - 21:00 IST", description="Mandated calling window")
+    trai_is_open: bool = Field(..., description="Whether currently within window")
+    trai_status: str = Field(..., description="'Active' | 'Deferred'")
+    current_ist: str = Field(..., description="Current time in IST")
+
+
+@app.get("/api/system/status", response_model=SystemStatusResponse, tags=["Health"])
+async def get_system_status() -> SystemStatusResponse:
+    """
+    Returns live dynamic operational telemetry across PSTN gateway, LLM inference, and TRAI regulatory window.
+    """
+    import zoneinfo
+    from datetime import datetime
+    import httpx
+    from backend.scheduler.tasks import is_within_trai_calling_window
+
+    # 1. Determine Active PSTN Carrier Gateway Status (Plivo vs Twilio, Sandbox vs Live)
+    carrier_provider = settings.telephony_provider.strip().lower()
+    if carrier_provider == "twilio":
+        is_dummy = (
+            not settings.twilio_account_sid
+            or settings.twilio_account_sid.lower() in ("your_twilio_account_sid", "mock", "", "none")
+            or not settings.twilio_auth_token
+            or settings.twilio_auth_token.lower() in ("your_twilio_auth_token", "mock", "", "none")
+            or not settings.twilio_account_sid.lower().startswith("ac")
+        )
+        pstn_status = "dummy" if is_dummy else "active"
+        pstn_label = "Twilio Sandbox" if is_dummy else "Twilio Active"
+        pstn_caller_id = settings.twilio_caller_id
+    else:
+        is_dummy = (
+            not settings.plivo_auth_id
+            or settings.plivo_auth_id.lower() in ("your_plivo_auth_id", "mock", "", "none")
+            or not settings.plivo_auth_token
+            or settings.plivo_auth_token.lower() in ("your_plivo_auth_token", "mock", "", "none")
+        )
+        pstn_status = "dummy" if is_dummy else "active"
+        pstn_label = "Plivo Sandbox" if is_dummy else "Plivo Active"
+        pstn_caller_id = settings.plivo_caller_id
+
+    # 2. Determine LLM Provider (Probe Local Ollama vs Groq vs Fallback)
+    ollama_online = False
+    try:
+        async with httpx.AsyncClient(timeout=0.25) as client:
+            resp = await client.get(f"{settings.ollama_base_url}/api/tags")
+            if resp.status_code == 200:
+                ollama_online = True
+    except Exception:
+        ollama_online = False
+
+    if ollama_online:
+        llm_provider = "ollama"
+        llm_model = settings.ollama_model
+        llm_label = f"Ollama GPU: {settings.ollama_model}"
+    elif settings.gemini_api_key and not settings.gemini_api_key.startswith("your_"):
+        llm_provider = "gemini"
+        llm_model = settings.gemini_model
+        llm_label = f"Gemini Flash: {settings.gemini_model}"
+    elif settings.groq_api_key and not settings.groq_api_key.startswith("your_"):
+        llm_provider = "groq"
+        llm_model = "qwen/qwen3.8-27b"
+        llm_label = "Groq Cloud"
+    else:
+        llm_provider = "fallback"
+        llm_model = "deterministic"
+        llm_label = "Deterministic Fallback"
+
+    # 3. Determine TRAI Calling Window Status
+    trai_open = is_within_trai_calling_window()
+    tz = zoneinfo.ZoneInfo("Asia/Kolkata")
+    now_ist = datetime.now(tz).strftime("%H:%M IST")
+
+    return SystemStatusResponse(
+        pstn_status=pstn_status,
+        pstn_label=pstn_label,
+        pstn_caller_id=pstn_caller_id,
+        llm_provider=llm_provider,
+        llm_label=llm_label,
+        llm_model=llm_model,
+        trai_window="09:00 - 21:00 IST",
+        trai_is_open=trai_open,
+        trai_status="Active" if trai_open else "Deferred",
+        current_ist=now_ist,
+    )

@@ -1,5 +1,6 @@
-import React from 'react';
-import { PhoneCall, LogOut, type LucideIcon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { PhoneCall, LogOut, Server, Cpu, Clock, type LucideIcon } from 'lucide-react';
+import { getSystemStatus, type SystemStatus } from '@/lib/api-client';
 
 export interface NavTab {
   id: string;
@@ -15,12 +16,39 @@ interface SidebarProps {
   userName: string;
   userRole: string;
   onLogout: () => void;
+  systemStatus?: SystemStatus | null;
 }
 
 const initialsOf = (name: string) =>
   name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'ST';
 
-export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, setActiveTab, userName, userRole, onLogout }) => (
+export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, setActiveTab, userName, userRole, onLogout, systemStatus }) => {
+  const [internalStatus, setInternalStatus] = useState<SystemStatus | null>(null);
+
+  useEffect(() => {
+    if (systemStatus) return;
+    let cancelled = false;
+    const fetchStatus = () => {
+      getSystemStatus()
+        .then((data) => { if (!cancelled) setInternalStatus(data); })
+        .catch(() => {});
+    };
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [systemStatus]);
+
+  const activeStatus = systemStatus ?? internalStatus;
+  const isPstnActive = activeStatus ? activeStatus.pstn_status === 'active' : false;
+  const pstnLabel = activeStatus?.pstn_label ?? 'Telephony Gateway';
+  const llmLabel = activeStatus?.llm_label ?? 'LLM Engine';
+  const traiOpen = activeStatus ? activeStatus.trai_is_open : true;
+  const traiStatus = activeStatus ? activeStatus.trai_status : 'Active';
+
+  return (
   <aside className="bg-white lg:w-72 lg:shrink-0 lg:h-screen lg:sticky lg:top-0 flex flex-col border-b lg:border-b-0 lg:border-r border-hairline">
     <a
       href="#main-content"
@@ -89,6 +117,40 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, se
       })}
     </nav>
 
+    {/* System Telemetry — desktop only */}
+    <div className="hidden lg:block px-4 py-3 mx-4 mb-2 rounded-2xl bg-canvas border border-hairline text-xs font-mono">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-mute mb-2">
+        System Status
+      </div>
+      <div className="space-y-1.5 text-[11px]">
+        <div className="flex items-center justify-between">
+          <span className="text-mute flex items-center gap-1">
+            <Server className="w-3 h-3 text-mute" /> PSTN:
+          </span>
+          <span className={`font-semibold flex items-center gap-1.5 ${isPstnActive ? 'text-live-pulse' : 'text-telemetry-amber'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${isPstnActive ? 'bg-live-pulse' : 'bg-telemetry-amber'} animate-pulse`} />
+            {pstnLabel}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-mute flex items-center gap-1">
+            <Cpu className="w-3 h-3 text-mute" /> LLM:
+          </span>
+          <span className="font-semibold text-telemetry-cyan truncate max-w-[130px]" title={llmLabel}>
+            {llmLabel}
+          </span>
+        </div>
+        <div className="flex items-center justify-between border-t border-hairline/60 pt-1.5">
+          <span className="text-mute flex items-center gap-1">
+            <Clock className="w-3 h-3 text-mute" /> TRAI:
+          </span>
+          <span className={`font-semibold ${traiOpen ? 'text-ink' : 'text-mute'}`}>
+            {traiStatus}
+          </span>
+        </div>
+      </div>
+    </div>
+
     {/* Logout — desktop only */}
     <div className="hidden lg:block p-4">
       <button
@@ -100,6 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, se
       </button>
     </div>
   </aside>
-));
+  );
+});
 
 Sidebar.displayName = 'Sidebar';

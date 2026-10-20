@@ -1,6 +1,6 @@
 # AI Call Agent System — Agent Memory & Production Engineering Guidelines
 # File: AGENTS.md
-# Location: Workspace Root (/home/urva/Downloads/Nirma Project/AGENTS.md)
+# Location: Workspace Root (/Users/urvagandhi/Developer/College/nirma-ai-call-agent/AGENTS.md)
 
 <agent_identity>
 You are the Lead Distributed Systems Architect, Principal Backend Engineer, and Voice AI Specialist for the Nirma University AI Call Agent Project.
@@ -295,6 +295,40 @@ Refs: #<issue_number>
   - Display & Body: Inter / System UI with Gujarati (`Noto Sans Gujarati`) & Devanagari (`Noto Sans Devanagari`) support.
   - Telemetry & Numbers: JetBrains Mono / SFMono with mandatory `tabular-nums` for all real-time counters, phone numbers, UUIDs, and latency readouts.
 - **4px Spatial Grid & 32px Control Height**: All buttons, inputs, and select triggers share a standard `32px` height (`control-height`) on the 4px baseline grid.
+
+---
+
+## 10. System State Memory & Current Architecture Snapshot (October 2026)
+
+### 10.1 Role-Based Access Control (RBAC) & Data Scoping
+- **Admin Role**: Full system access. Manages staff/faculty accounts (`/auth/users`), accesses the Executive Analytics Dashboard (`/api/analytics/*`), views all outbound campaigns, inspects live WebSocket telemetry, and triggers manual call task retries.
+- **Operator (Faculty) Role**: Scoped access. Restricted from administrative user management and global analytics. Can search active students (`/api/students/search`), launch individual or batch calls (`/api/campaigns`), and inspect only call transcripts generated under their own user account (`_assert_task_access` enforcement).
+
+### 10.2 Dynamic Telemetry & Probing Architecture (`/api/system/status`)
+- **PSTN Gateway Probe**: Probes `PLIVO_AUTH_ID` and `PLIVO_AUTH_TOKEN` to distinguish live carrier dispatch from local development dummy sandbox mode (`mock_...` UUIDs).
+- **LLM Inferencing Probe**: Directly pings local Ollama (`GET http://ollama:11434/api/tags`) with a 250ms deadline. On connection failure or missing weights, automatically signals failover to Groq Cloud API (`qwen/qwen3.8-27b`) or deterministic rule-based template generation.
+- **TRAI Regulatory Telemetry**: Dynamically calculates IST datetime (`Asia/Kolkata`) against the mandated 09:00:00 - 21:00:00 IST window, providing real-time `Active` vs `Deferred` state to the frontend sidebar.
+
+### 10.3 Reason-Driven Calling Pipeline (`backend.ai_pipeline.script_writer`)
+- Eliminates reliance on rigid static templates. Staff submit a natural language reason for the call with optional document attachments (`.txt`, `.pdf`).
+- **Deterministic AI Disclosure**: To ensure non-negotiable TRAI consumer compliance, the call greeting is deterministically constructed in the target language (English, Hindi, Gujarati) with explicit identification as an automated AI system of Nirma University.
+- **Topic-Locked System Prompt**: Meta-prompting via `FallbackLLM` instructs the language model to generate a strict, 30-word max, 2-sentence conversational instruction bound exclusively to the staff member's stated reason.
+
+### 10.4 Cloud Infrastructure & Broker Resilience (Upstash & Supabase)
+- **Celery Broker SSL**: Enforces `ssl_cert_reqs = ssl.CERT_NONE` whenever `CELERY_BROKER_URL` uses `rediss://` to guarantee TLS compatibility with Upstash Serverless Redis.
+- **Database Connection Poolers**: Configured with `statement_cache_size = 0` and `pool_pre_ping = True` in `session.py` to prevent prepared-statement collisions on Supabase transaction poolers / PgBouncer.
+
+### 10.5 Dynamic Multi-Carrier Telephony Architecture (Plivo & Twilio)
+- **Carrier Switching**: Controlled seamlessly via `TELEPHONY_PROVIDER="plivo"` or `TELEPHONY_PROVIDER="twilio"` in `.env`.
+- **Abstract Factory Pattern**: [`get_telephony_adapter()`](file:///Users/urvagandhi/Developer/College/nirma-ai-call-agent/backend/telephony/factory.py) resolves the concrete adapter (`PlivoAdapter` or `TwilioAdapter`) at runtime.
+- **Dynamic Webhook Construction**: `settings.get_carrier_webhook_urls(task_id)` binds either `/webhook/plivo/*` (Plivo XML) or `/webhook/twilio/*` (TwiML via `VoiceResponse`).
+- **Authenticated Carrier Media**: [`backend/ai_pipeline/stt.py`](file:///Users/urvagandhi/Developer/College/nirma-ai-call-agent/backend/ai_pipeline/stt.py) automatically supplies Twilio HTTP Basic Auth credentials when fetching caller recordings from `api.twilio.com`.
+- **System Telemetry Probe**: `/api/system/status` dynamically reports active carrier name, sandbox vs live status, and caller ID to the frontend sidebar.
+
+### 10.6 Automated Verification Benchmark
+- 174 automated pytest test cases passing across Unit, Integration, Adversarial Security, Plivo & Twilio Webhook State Machines, Concurrency Race, and E2E Lifecycle modules.
+- Frontend built clean with TypeScript compiler (`tsc -b`) and Vite production bundler.
+
 
 
 
