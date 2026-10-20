@@ -266,6 +266,42 @@ class TwilioAdapter(BaseTelephonyAdapter):
         """
         return await asyncio.to_thread(self._sync_hangup_call, call_uuid)
 
+    def _sync_transfer_call(self, call_uuid: str, desk_number: str = "+917971606000") -> bool:
+        """
+        Synchronously transfers an active Twilio call by modifying its live TwiML.
+
+        Args:
+            call_uuid: Twilio Call SID.
+            desk_number: Recipient desk phone number.
+
+        Returns:
+            bool: True if transfer succeeded, False on error.
+        """
+        if call_uuid.startswith("mock_"):
+            logger.info("MOCK TELEPHONY SANDBOX (Twilio): Transferring simulated call %s to %s", call_uuid, desk_number)
+            return True
+
+        client = self._get_client()
+        try:
+            twiml = (
+                f'<Response>'
+                f'<Say voice="Polly.Aditi" language="en-IN">Transferring your call to the Nirma University Help Desk. Please hold.</Say>'
+                f'<Dial>{desk_number}</Dial>'
+                f'</Response>'
+            )
+            client.calls(call_uuid).update(twiml=twiml)
+            logger.info("Transferred Twilio call SID %s to desk %s", call_uuid, desk_number)
+            return True
+        except Exception as exc:
+            logger.error("Failed to transfer Twilio call SID %s to %s: %s", call_uuid, desk_number, exc)
+            return False
+
+    async def transfer_call(self, call_uuid: str, desk_number: str = "+917971606000") -> bool:
+        """
+        Transfers an active Twilio call asynchronously without blocking event loop.
+        """
+        return await asyncio.to_thread(self._sync_transfer_call, call_uuid, desk_number)
+
     def _sync_get_status(self, call_uuid: str) -> str:
         """
         Synchronous worker querying live call status from Twilio API.

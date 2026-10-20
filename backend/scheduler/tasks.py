@@ -25,7 +25,7 @@ from typing import Optional
 import pytz
 
 from backend.config import settings
-from backend.database.models import CallCampaign, CallTask, utc_now
+from backend.database.models import CallCampaign, CallScript, CallTask, utc_now
 from backend.database.session import get_sync_session
 from backend.scheduler.celery_app import celery_app
 from backend.telephony import get_telephony_adapter
@@ -139,6 +139,28 @@ def place_call_task(self, call_task_id: int) -> Optional[str]:
 
         adapter = get_telephony_adapter(carrier)
         caller_id = settings.active_caller_id
+
+        # Pre-synthesize opening message audio and cache metadata to local Redis
+        # Guarantees immediate 0ms cache-hit when carrier invokes the answer webhook.
+        try:
+            script = db.query(CallScript).filter(CallScript.id == task.script_id).first()
+            if script and script.opening_message:
+                from backend.ai_pipeline.tts import FallbackTTS
+                import json
+                import redis
+                audio_url = FallbackTTS().prewarm_sync(script.opening_message, script.language or "en")
+                r = redis.from_url(settings.redis_url, socket_timeout=3.0)
+                meta_val = json.dumps({
+                    "task_id": task.id,
+                    "script_id": script.id,
+                    "opening_message": script.opening_message,
+                    "opening_audio_url": audio_url,
+                    "language": script.language or "en",
+                    "system_prompt": script.system_prompt,
+                })
+                r.set(f"call:task_meta:{task.id}", meta_val, ex=3600)
+        except Exception as prewarm_err:
+            logger.warning("Opening audio prewarm warning: %s", prewarm_err)
 
         try:
             # Execute telephony carrier REST call synchronously with zero asyncio event loop overhead

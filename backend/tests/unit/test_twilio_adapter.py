@@ -159,7 +159,7 @@ def test_get_telephony_adapter_factory():
 
 
 def test_build_twilio_xml_response():
-    """Verifies TwiML generation with <Play> and <Record timeout='2' ...> elements."""
+    """Verifies TwiML generation with <Play> and <Gather input='speech' ...> elements."""
     twiml_str = _build_twilio_xml_response(
         audio_url="https://domain.edu/static/audio/test.wav",
         action_url="https://domain.edu/webhook/twilio/input?task_id=10",
@@ -167,9 +167,9 @@ def test_build_twilio_xml_response():
     )
     assert "<Response>" in twiml_str
     assert "<Play>https://domain.edu/static/audio/test.wav</Play>" in twiml_str
-    assert '<Record action="https://domain.edu/webhook/twilio/input?task_id=10"' in twiml_str
+    assert '<Gather action="https://domain.edu/webhook/twilio/input?task_id=10"' in twiml_str
+    assert 'input="speech"' in twiml_str
     assert 'timeout="2"' in twiml_str
-    assert 'finishOnKey="#"' in twiml_str
 
     # Hangup XML
     hangup_str = _build_twilio_xml_response(hangup=True)

@@ -28,6 +28,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.ai_pipeline.script_writer import build_opening_message, extract_document_text, generate_system_prompt
 from backend.api.auth import get_current_user, require_admin
+from backend.config import settings
 from backend.database.models import CallCampaign, CallScript, CallTask, StaffUser, utc_now
 from backend.database.session import get_async_session, get_sync_session
 from backend.scheduler.campaign_runner import CampaignRunner
@@ -91,7 +92,7 @@ class CallScriptResponse(BaseModel):
 
 
 class CampaignTaskResponse(BaseModel):
-    """Call task row enriched with student identity for live monitoring views."""
+    """Call task row enriched with student identity and purpose summary for live monitoring views."""
 
     id: int
     campaign_id: int
@@ -106,6 +107,9 @@ class CampaignTaskResponse(BaseModel):
     duration_sec: Optional[int]
     outcome: Optional[str]
     placed_at: Optional[datetime]
+    campaign_name: Optional[str] = None
+    script_name: Optional[str] = None
+    summary: Optional[str] = None
 
 
 class PaginatedCampaignTasks(BaseModel):
@@ -206,11 +210,39 @@ async def create_campaign(
     if task_count > 0:
         def _sync_auto_dispatch():
             from backend.scheduler.tasks import place_call_task
+            from backend.ai_pipeline.tts import FallbackTTS
+            import json
+            import redis
+
+            # Pre-synthesize opening audio so it is 100% written on disk before dialing
+            audio_url = ""
+            try:
+                audio_url = FallbackTTS().prewarm_sync(script.opening_message, script.language or "en")
+            except Exception as e:
+                logger.warning("Opening audio prewarm error: %s", e)
+
             with get_sync_session() as sync_db:
                 due_tasks = sync_db.query(CallTask).filter(
                     CallTask.campaign_id == campaign.id,
                     CallTask.status == "pending"
                 ).all()
+
+                # Cache task metadata in Redis with TTL=3600 for instant sub-50ms webhook response
+                try:
+                    r = redis.from_url(settings.redis_url, socket_timeout=3.0)
+                    for dt in due_tasks:
+                        meta_val = json.dumps({
+                            "task_id": dt.id,
+                            "script_id": script.id,
+                            "opening_message": script.opening_message,
+                            "opening_audio_url": audio_url,
+                            "language": script.language or "en",
+                            "system_prompt": script.system_prompt,
+                        })
+                        r.set(f"call:task_meta:{dt.id}", meta_val, ex=3600)
+                except Exception as redis_err:
+                    logger.warning("Task metadata cache warning: %s", redis_err)
+
                 for dt in due_tasks:
                     try:
                         place_call_task(dt.id)
@@ -312,7 +344,11 @@ async def list_campaign_tasks(
 
     query = (
         select(CallTask)
-        .options(selectinload(CallTask.student))
+        .options(
+            selectinload(CallTask.student),
+            selectinload(CallTask.campaign),
+            selectinload(CallTask.script),
+        )
         .where(CallTask.campaign_id == campaign_id)
         .order_by(CallTask.id.desc())
         .offset((page - 1) * limit)
@@ -336,6 +372,9 @@ async def list_campaign_tasks(
             duration_sec=t.duration_sec,
             outcome=t.outcome,
             placed_at=t.placed_at,
+            campaign_name=t.campaign.name if t.campaign else None,
+            script_name=t.script.name if t.script else None,
+            summary=t.campaign.name if t.campaign else (t.script.name if t.script else "Academic Outreach"),
         )
         for t in tasks
     ]

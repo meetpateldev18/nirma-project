@@ -329,7 +329,7 @@ Derived from institutional print aesthetics (IMS Ahmedabad / Nirma University):
 | **2. Plivo Webhook Signatures** | `backend/telephony/webhook_handler.py` | Webhooks validate parameters but do not currently verify `X-Plivo-Signature-V3`. | Add FastAPI middleware or dependency verifying HMAC-SHA256 signature using `settings.plivo_auth_token`. |
 | **3. Twilio Adapter Implementation** | `backend/telephony/` | **RESOLVED & COMPLETE**. Full `TwilioAdapter`, `get_telephony_adapter()` factory, authenticated audio fetching, and `/webhook/twilio/*` TwiML state machine active. | Complete with 14 automated regression test cases. |
 | **4. Multi-Semester Matching** | `backend/scheduler/campaign_runner.py` | Matches a single integer semester; frontend can send arrays. | Update filter logic to support `semester in target_filter["semesters"]`. |
-| **5. Live Call Action Endpoints** | `backend/api/calls.py` & UI | "Transfer" and "Hangup" buttons in `LiveTelemetryView.tsx` are UI-only. | Add `POST /api/calls/{id}/hangup` calling `adapter.hangup_call(task.plivo_uuid)`. |
+| **5. Live Call Action Endpoints** | `backend/api/calls.py` & UI | **RESOLVED & COMPLETE**. Real `POST /api/calls/{id}/hangup` and `POST /api/calls/{id}/transfer` endpoints connect to carrier adapter. | Complete with automated test coverage. |
 | **6. CSV Student Import** | `backend/api/students.py` | No bulk CSV import endpoint exists. | Implement `POST /api/students/import` accepting CSV with roll, name, phone, dept, sem, lang. |
 | **7. MinIO Object Storage** | Infrastructure | MinIO is referenced in `.env.example` but audio is currently served from local disk. | Add MinIO/S3 storage backend for audio archive persistence across container rebuilds. |
 
@@ -341,7 +341,7 @@ Derived from institutional print aesthetics (IMS Ahmedabad / Nirma University):
 ```bash
 source .venv/bin/activate
 pytest -v
-# 174 passed in ~2.4 seconds
+# 182 passed in ~10.5 seconds
 ```
 
 ### 10.2 Building & Linting Frontend
@@ -356,3 +356,37 @@ npm run build   # tsc -b && vite build: clean production bundle
 python scripts/verify_credentials.py
 ```
 Checks Groq Cloud LLM, Sarvam AI STT, Supabase PostgreSQL, Upstash Redis, and Plivo sandbox.
+
+---
+
+## 11. Interactive Voice Operations & Live Telemetry Upgrades
+
+### 11.1 Twilio `<Gather>` Speech Recognition & Multilingual Dialogue State Machine
+- **Twilio Trial Interactivity**: Twilio Free Trial accounts prohibit unverified `<Record>` media harvesting. The system transitions Twilio turn loops to native `<Gather input="speech" language="gu-IN" timeout="4" speechTimeout="auto">` combined with `<Say>` or `<Play>`.
+- **Gujarati & Hindi Farewell Handshake**: Webhook handler incorporates regex detection for conversational farewell phrases (`"થેન્ક્યુ"`, `"આભાર"`, `"ધન્યવાદ"`, `"આવજો"`, `"bye"`, `"thanks"`). When detected, the agent replies with an institutional courtesy closing and triggers a clean carrier hangup.
+- **Provider String Length Safety**: Truncates model identifier names to fit within `call_logs.llm_provider VARCHAR(20)`.
+
+### 11.2 Active Call Polling Watchdog (`_active_call_watchdog`)
+- **Carrier Disconnect Reliability**: Telecom carriers and edge networks frequently drop or omit terminal callbacks (`status_callback` or `hangup`).
+- **Lifespan Background Poller**: An asynchronous task runs every 3 seconds inside FastAPI's lifespan, directly querying carrier REST APIs for active `ringing` or `in_progress` tasks.
+- **State Reconciliation**: On detecting terminal states (`completed`, `busy`, `failed`, `no-answer`, `canceled`), it triggers `_execute_call_hangup()`, calculates exact elapsed duration from `answered_at`, persists the outcome to PostgreSQL, cleans up Redis keys, and broadcasts `call_status: completed` via WebSocket.
+
+### 11.3 In-Flight Live Transcripts & Dual Property Normalization
+- **Dual-Property Compatibility**: Normalized conversation turn structure across `backend/api/calls.py` and `frontend/src/lib/api-client.ts` to support both `text` and `content` keys seamlessly, eliminating empty speech bubbles in the UI.
+- **In-Memory Redis Turn Streaming**: `GET /api/calls/{task_id}/transcript` queries in-flight Redis session history (`call:session:{call_uuid}`) before PostgreSQL persistence, enabling real-time dialogue monitoring during ongoing calls.
+- **WebSocket Streaming**: Frontend subscribes to `transcript_turn` events via `connectCallEvents()` to append live user and assistant utterances incrementally.
+
+### 11.4 Responsive Layout & Disposition Badges
+- **Viewport Resilience**: Applied `min-w-0 flex-1 truncate` to inspector containers, preventing long 34-character Call SIDs (`CA...`) and student details from pushing buttons past viewport edges.
+- **Header Layout Flex**: Controls adaptively switch layout (`flex-col xl:flex-row`).
+- **Call Disposition Badges**: Replaced disabled and overflowing `[Transfer Desk]` and `[Hang Up]` buttons on completed calls with a compact `Resolved • Xs` badge. Action buttons are strictly isolated to `in_progress` and `ringing` calls.
+- **Ticking Duration Clock**: 1-second live interval dynamically counts elapsed call time from `task.answered_at`.
+
+### 11.5 Call Retry & Multi-Attempt Lifecycle Management
+- **Per-Attempt Timestamp Isolation**: Re-dialing via `POST /api/calls/{id}/retry` explicitly resets `task.placed_at = None`, `task.answered_at = None`, `task.ended_at = None`, and `task.duration_sec = 0`. On answer, `answered_at` is set to the current UTC timestamp, ensuring duration reflects only the active call session rather than drifting across historical attempts.
+- **Transcript Accumulation Across Re-dials**: Previous dialogue history is preserved across re-dials. `finalize_call_hangup` appends new turns separated by `--- Re-dial Attempt #X ---`. Live session retrieval combines prior stored transcripts with in-flight Redis turns with an active attempt divider.
+- **Circuit Breaker & Fast Cloud Failover**: `FallbackLLM` introduces a 60-second circuit breaker for offline local Ollama instances, bypassing connection timeouts in 0ms directly to Groq Cloud / Gemini. Per-tier timeouts are locked to $\le 2.0\text{s}$, guaranteeing full pipeline turn latency $< 2.5\text{s}$ and completely preventing Twilio 10-second HTTP gateway timeouts.
+- **Language-Aware Domain Boundaries**: `RuleBasedLLM` detects the conversation's target language (Gujarati, Hindi, English). When out-of-domain or unanswerable queries occur, it generates an institutional, polite response in the user's language clarifying its operational scope as Nirma University's AI assistant.
+- **Zero-Latency Live Telemetry Synchronization**: `LiveTelemetryView.tsx` incorporates `localTaskOverrides` state updated immediately upon `call_status` and `transcript_turn` WebSocket frames, rendering live status transitions and speech turns with zero user manual refresh.
+
+

@@ -107,29 +107,6 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
 
   return (
     <div className="space-y-6">
-      {/* Action Toolbar Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-2xl border border-hairline p-4 sm:p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-live-pulse animate-pulse" />
-            <h2 className="text-base sm:text-lg font-bold text-ink">Telephony Operations Overview</h2>
-          </div>
-          <p className="text-xs text-body mt-0.5">
-            Aggregated PSTN telemetry across campaigns, answering ratios, and conversational duration
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button variant="outline" size="sm" onClick={onViewTranscripts} className="h-9 rounded-full px-4 text-xs">
-            <Clock className="w-3.5 h-3.5 mr-1.5 text-mute" />
-            Call History
-          </Button>
-          <Button size="sm" onClick={onLaunchNewCampaign} className="h-9 rounded-full px-4 text-xs bg-primary hover:bg-primary-hover shadow-sm">
-            <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
-            Start Call Campaign
-          </Button>
-        </div>
-      </div>
-
       {/* KPI Stat Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
@@ -303,7 +280,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
             {campaigns.length} Campaigns
           </Badge>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           {campaigns.length === 0 ? (
             <div className="p-8 text-center text-xs text-mute font-mono">
               No campaigns initiated. Click "Start Call Campaign" to dispatch automated calls.

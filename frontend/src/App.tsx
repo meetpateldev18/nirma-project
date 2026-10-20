@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
-import { Activity, Radio, PhoneCall, FileText, Users } from 'lucide-react';
+import { Activity, Radio, PhoneCall, FileText, Users, Clock, ShieldCheck } from 'lucide-react';
 import { Sidebar, type NavTab } from '@/components/Sidebar';
 import { LoginView } from '@/components/LoginView';
 import { Toaster } from '@/components/ui/sonner';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 import * as api from '@/lib/api-client';
 import {
@@ -71,7 +72,16 @@ function AuthenticatedApp() {
 
   const refreshTasks = useCallback(async (campaignList: CallCampaign[]) => {
     const relevant = campaignList.filter((c) => c.status === 'running' || c.status === 'pending' || c.status === 'completed');
-    const results = await Promise.all(relevant.map((c) => api.listCampaignTasks(c.id).catch(() => [])));
+    const results = await Promise.all(
+      relevant.map(async (c) => {
+        const cTasks = await api.listCampaignTasks(c.id).catch(() => []);
+        return cTasks.map((t) => ({
+          ...t,
+          campaign_name: t.campaign_name || c.name,
+          summary: t.summary || t.campaign_name || c.name,
+        }));
+      })
+    );
     setTasks(results.flat());
   }, []);
 
@@ -104,7 +114,24 @@ function AuthenticatedApp() {
 
   // Live updates: refresh whenever the backend reports a call event.
   useEffect(() => {
-    const socket = api.connectCallEvents(() => {
+    const socket = api.connectCallEvents((envelope) => {
+      if (envelope.event === 'call_status') {
+        const payload = envelope.data as any;
+        if (payload?.task_id) {
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === payload.task_id
+                ? {
+                    ...t,
+                    status: payload.status,
+                    duration_sec: payload.duration_sec ?? t.duration_sec,
+                    plivo_uuid: payload.call_uuid ?? t.plivo_uuid,
+                  }
+                : t
+            )
+          );
+        }
+      }
       refreshCampaigns();
       refreshAnalytics();
     });
@@ -131,14 +158,13 @@ function AuthenticatedApp() {
     isAdmin
       ? [
           { id: 'dashboard', label: 'Overview', icon: Activity },
-          { id: 'telemetry', label: 'Live calls', icon: Radio, badge: activeCallCount },
+          { id: 'telemetry', label: 'Calls & Transcripts', icon: Radio, badge: activeCallCount },
           { id: 'campaigns', label: 'New call', icon: PhoneCall },
-          { id: 'transcripts', label: 'Transcripts', icon: FileText },
           { id: 'users', label: 'Faculty access', icon: Users },
         ]
       : [
+          { id: 'telemetry', label: 'Calls & Transcripts', icon: Radio, badge: activeCallCount },
           { id: 'campaigns', label: 'New call', icon: PhoneCall },
-          { id: 'transcripts', label: 'My transcripts', icon: FileText },
         ]
   ), [isAdmin, activeCallCount]);
 
@@ -159,11 +185,8 @@ function AuthenticatedApp() {
       case 'dashboard':
         return { label: 'Overview', desc: 'Real-time outbound campaign analytics, KPI trends, and call volume' };
       case 'telemetry':
-        return { label: 'Live Telemetry & Streams', desc: 'Real-time PSTN carrier channel monitor, live audio waveforms, and turn latency' };
-      case 'campaigns':
-        return { label: 'Call Studio', desc: 'Reason-driven AI call dispatching for individual students or academic cohorts' };
       case 'transcripts':
-        return { label: 'Call Records & Transcripts', desc: 'Complete conversational audio history, ASR transcripts, and retry dispatch' };
+        return { label: 'Calls & Transcripts', desc: 'Real-time PSTN carrier channel monitor (10 channels), live audio waveforms, and conversational transcripts' };
       case 'users':
         return { label: 'Faculty Access Control', desc: 'Manage departmental faculty permissions and operator access accounts' };
       default:
@@ -210,16 +233,8 @@ function AuthenticatedApp() {
               <span className="tabular-nums font-medium">{istTime || 'IST Active'}</span>
             </div>
 
-            {/* Live Carrier Pill */}
-            {systemStatus && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-canvas-elevated border border-hairline text-xs font-mono">
-                <span className={`w-1.5 h-1.5 rounded-full ${systemStatus.pstn_status === 'active' ? 'bg-live-pulse' : 'bg-telemetry-amber'} animate-pulse`} />
-                <span className="text-ink font-medium">{systemStatus.pstn_label}</span>
-              </div>
-            )}
-
             {/* Active Live Calls Count */}
-            {activeCallCount > 0 && (
+            {activeCallCount > 0 && activeTab !== 'telemetry' && (
               <button
                 type="button"
                 onClick={() => setActiveTab('telemetry')}
@@ -230,16 +245,45 @@ function AuthenticatedApp() {
               </button>
             )}
 
-            {/* Quick Call Action (if not already on Call Studio) */}
-            {activeTab !== 'campaigns' && (
-              <button
-                type="button"
+            {/* Tab Contextual Actions */}
+            {activeTab === 'dashboard' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveTab('telemetry')}
+                  className="h-8 rounded-full px-3.5 text-xs border-hairline text-body hover:text-ink"
+                >
+                  <Clock className="w-3.5 h-3.5 mr-1.5 text-mute" />
+                  Call History
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setActiveTab('campaigns')}
+                  className="h-8 rounded-full px-4 text-xs font-semibold bg-primary hover:bg-primary-hover shadow-sm"
+                >
+                  <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
+                  New Call
+                </Button>
+              </>
+            )}
+
+            {activeTab === 'campaigns' && (
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-live-pulse/10 border border-live-pulse/20 text-xs font-mono text-live-pulse">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="font-medium">TRAI 09:00 - 21:00 Regulated</span>
+              </div>
+            )}
+
+            {(activeTab === 'telemetry' || activeTab === 'transcripts' || activeTab === 'users') && (
+              <Button
+                size="sm"
                 onClick={() => setActiveTab('campaigns')}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-sm transition-all active:scale-[0.98]"
+                className="h-8 rounded-full px-4 text-xs font-semibold bg-primary hover:bg-primary-hover shadow-sm"
               >
-                <PhoneCall className="w-3.5 h-3.5" />
-                <span>New Call</span>
-              </button>
+                <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
+                New Call
+              </Button>
             )}
           </div>
         </header>
@@ -260,17 +304,24 @@ function AuthenticatedApp() {
                 volume={volume}
                 outcomes={outcomes}
                 onLaunchNewCampaign={() => setActiveTab('campaigns')}
-                onViewTranscripts={() => setActiveTab('transcripts')}
+                onViewTranscripts={() => setActiveTab('telemetry')}
               />
             )}
-            {activeTab === 'telemetry' && isAdmin && <LiveTelemetryView tasks={tasks} onSelectTask={() => {}} />}
+            {(activeTab === 'telemetry' || activeTab === 'transcripts') && (
+              <LiveTelemetryView 
+                tasks={tasks} 
+                onSelectTask={() => {}} 
+                onTaskRetried={handleTaskRetried}
+                systemStatus={systemStatus} 
+              />
+            )}
             {activeTab === 'campaigns' && (
               <NewCallView
                 onCallLaunched={handleCallLaunched}
-                onNavigateToTelemetry={() => setActiveTab(isAdmin ? 'telemetry' : 'transcripts')}
+                onNavigateToTelemetry={() => setActiveTab('telemetry')}
+                systemStatus={systemStatus}
               />
             )}
-            {activeTab === 'transcripts' && <TranscriptView tasks={tasks} onTaskRetried={handleTaskRetried} />}
             {activeTab === 'users' && isAdmin && <UsersView />}
           </Suspense>
         )}

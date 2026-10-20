@@ -217,6 +217,9 @@ interface BackendCampaignTask {
   duration_sec: number | null;
   outcome: string | null;
   placed_at: string | null;
+  campaign_name?: string | null;
+  script_name?: string | null;
+  summary?: string | null;
 }
 
 function mapTask(t: BackendCampaignTask): CallTask {
@@ -234,6 +237,9 @@ function mapTask(t: BackendCampaignTask): CallTask {
     duration_sec: t.duration_sec ?? undefined,
     outcome: t.outcome || undefined,
     placed_at: t.placed_at || undefined,
+    campaign_name: t.campaign_name || undefined,
+    script_name: t.script_name || undefined,
+    summary: t.summary || t.campaign_name || t.script_name || undefined,
   };
 }
 
@@ -243,7 +249,7 @@ interface BackendTranscript {
   llm_provider: string | null;
   tts_provider: string | null;
   avg_latency_ms: number | null;
-  transcript: Array<{ role: string; text: string; timestamp?: string; latency_ms?: number }>;
+  transcript: Array<{ role: string; text?: string; content?: string; timestamp?: string; latency_ms?: number }>;
 }
 
 function mapTranscript(t: BackendTranscript): CallLog {
@@ -255,9 +261,9 @@ function mapTranscript(t: BackendTranscript): CallLog {
     tts_provider: t.tts_provider || 'unknown',
     avg_latency_ms: t.avg_latency_ms || 0,
     max_latency_ms: t.avg_latency_ms || 0,
-    transcript: t.transcript.map((turn) => ({
-      role: turn.role as 'assistant' | 'user' | 'system',
-      text: turn.text,
+    transcript: (t.transcript || []).map((turn) => ({
+      role: (turn.role as any) || 'assistant',
+      text: turn.text || turn.content || '',
       timestamp: turn.timestamp,
       latency_ms: turn.latency_ms,
     })),
@@ -380,6 +386,17 @@ export async function retryCallTask(taskId: number): Promise<void> {
   await request(`/api/calls/${taskId}/retry`, { method: 'POST' });
 }
 
+export async function hangupCall(taskId: number): Promise<CallTask> {
+  const data = await request<BackendCampaignTask>(`/api/calls/${taskId}/hangup`, { method: 'POST' });
+  return mapTask(data);
+}
+
+export async function transferCall(taskId: number, deskNumber?: string): Promise<CallTask> {
+  const qs = deskNumber ? `?desk_number=${encodeURIComponent(deskNumber)}` : '';
+  const data = await request<BackendCampaignTask>(`/api/calls/${taskId}/transfer${qs}`, { method: 'POST' });
+  return mapTask(data);
+}
+
 // ==============================================================================
 // Analytics
 // ==============================================================================
@@ -402,6 +419,11 @@ export interface SystemStatus {
   llm_provider: 'ollama' | 'groq' | 'gemini' | 'fallback';
   llm_label: string;
   llm_model: string;
+  stt_provider?: string;
+  stt_label?: string;
+  tts_provider?: string;
+  tts_label?: string;
+  audio_codec?: string;
   trai_window: string;
   trai_is_open: boolean;
   trai_status: string;

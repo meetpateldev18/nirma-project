@@ -207,3 +207,50 @@ async def test_retry_call_task_not_found(async_client: AsyncClient, admin_header
     """Verifies retry on non-existent task ID returns HTTP 404."""
     response = await async_client.post("/api/calls/999999/retry", headers=admin_headers)
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_hangup_call_task_success(
+    async_client: AsyncClient,
+    admin_headers: dict,
+    seeded_call_task: CallTask,
+    db_session: AsyncSession,
+):
+    """Verifies POST /api/calls/{task_id}/hangup terminates active call and marks status completed."""
+    response = await async_client.post(
+        f"/api/calls/{seeded_call_task.id}/hangup",
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == seeded_call_task.id
+    assert data["status"] == "completed"
+    assert data["outcome"] == "operator_hangup"
+
+    await db_session.refresh(seeded_call_task)
+    assert seeded_call_task.status == "completed"
+    assert seeded_call_task.outcome == "operator_hangup"
+
+
+@pytest.mark.asyncio
+async def test_transfer_call_task_success(
+    async_client: AsyncClient,
+    admin_headers: dict,
+    seeded_call_task: CallTask,
+    db_session: AsyncSession,
+):
+    """Verifies POST /api/calls/{task_id}/transfer bridges call to student desk and marks status completed."""
+    response = await async_client.post(
+        f"/api/calls/{seeded_call_task.id}/transfer?desk_number=+917971606000",
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == seeded_call_task.id
+    assert data["status"] == "completed"
+    assert data["outcome"] == "transferred"
+
+    await db_session.refresh(seeded_call_task)
+    assert seeded_call_task.status == "completed"
+    assert seeded_call_task.outcome == "transferred"
+

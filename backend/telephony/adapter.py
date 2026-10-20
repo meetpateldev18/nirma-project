@@ -106,6 +106,19 @@ class BaseTelephonyAdapter(ABC):
         """
         pass
 
+    async def transfer_call(self, call_uuid: str, desk_number: str = "+917971606000") -> bool:
+        """
+        Transfers an active telephone call to a destination department or help desk phone number.
+
+        Args:
+            call_uuid: Carrier call identifier.
+            desk_number: Destination phone number in E.164 format.
+
+        Returns:
+            bool: True if transfer initiated successfully, False otherwise.
+        """
+        raise NotImplementedError("Call transfer not supported by this adapter.")
+
     @abstractmethod
     async def get_call_status(self, call_uuid: str) -> str:
         """

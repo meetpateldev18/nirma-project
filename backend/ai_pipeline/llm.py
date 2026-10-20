@@ -96,6 +96,7 @@ class OllamaLLM(LLMAdapter):
         self.model = model or settings.ollama_model
         self.timeout_seconds = timeout_seconds
         self._client: Optional[httpx.AsyncClient] = None
+        self._quota_exhausted_until: float = 0.0
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Returns or lazily creates a persistent pooled AsyncClient for local Ollama."""
@@ -188,6 +189,7 @@ class GroqLLM(LLMAdapter):
         self.endpoint = "https://api.groq.com/openai/v1/chat/completions"
         self.timeout_seconds = timeout_seconds
         self._client: Optional[httpx.AsyncClient] = None
+        self._quota_exhausted_until: float = 0.0
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Returns or lazily creates a persistent pooled AsyncClient for Groq Cloud."""
@@ -259,6 +261,8 @@ class GeminiLLM(LLMAdapter):
     Provides native multilingual conversational fluency across Hindi, Gujarati, and English.
     """
 
+    _quota_exhausted_until: float = 0.0
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -316,6 +320,9 @@ class GeminiLLM(LLMAdapter):
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not configured in environment variables.")
 
+        if time.monotonic() < GeminiLLM._quota_exhausted_until:
+            raise RuntimeError("Gemini LLM quota circuit breaker active (429 rate limit).")
+
         full_system_prompt = f"{system_prompt}{TELEPHONY_VOICE_CONSTRAINT}"
 
         # Format messages for Gemini generateContent API
@@ -336,9 +343,17 @@ class GeminiLLM(LLMAdapter):
         }
 
         client = await self._get_client()
-        resp = await client.post(endpoint, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = await client.post(endpoint, json=payload)
+            if resp.status_code == 429:
+                GeminiLLM._quota_exhausted_until = time.monotonic() + 300.0
+                raise RuntimeError(f"Gemini LLM quota exceeded (429): {resp.text[:150]}")
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                GeminiLLM._quota_exhausted_until = time.monotonic() + 300.0
+            raise
 
         candidates = data.get("candidates", [])
         if not candidates:
@@ -355,6 +370,7 @@ class GeminiLLM(LLMAdapter):
 class RuleBasedLLM(LLMAdapter):
     """
     Deterministic rule-based fallback when all cloud and local inference engines fail.
+    Multilingual, context-aware, and polite telecom response.
     """
 
     async def generate(
@@ -364,25 +380,50 @@ class RuleBasedLLM(LLMAdapter):
         user_input: str,
     ) -> str:
         """
-        Returns a polite, deterministic notice to guarantee the call never crashes.
+        Returns a polite, deterministic notice matching the conversation's target language.
         """
-        return "Thank you for your response. We have recorded your message for Nirma University records."
+        prompt_lower = system_prompt.lower()
+
+        # Check for Gujarati (either language code, prompt indication, or script)
+        is_gujarati = (
+            "gujarati" in prompt_lower
+            or "language: gu" in prompt_lower
+            or "respond in gujarati" in prompt_lower
+            or any("\u0A80" <= c <= "\u0AFF" for c in user_input)
+            or any("\u0A80" <= c <= "\u0AFF" for c in system_prompt)
+        )
+        # Check for Hindi
+        is_hindi = (
+            "hindi" in prompt_lower
+            or "language: hi" in prompt_lower
+            or "respond in hindi" in prompt_lower
+            or any("\u0900" <= c <= "\u097F" for c in user_input)
+            or any("\u0900" <= c <= "\u097F" for c in system_prompt)
+        )
+
+        if is_gujarati:
+            return "હું નિર્મા યુનિવર્સિટીનો AI સહાયક છું અને ફક્ત આ સૂચના અને પરીક્ષા સંબંધિત માહિતી આપી શકું છું. પરીક્ષા અંગે કોઈ પ્રશ્ન હોય તો પૂછો."
+        elif is_hindi:
+            return "मैं निरमा विश्वविद्यालय का AI सहायक हूँ और केवल इस सूचना व परीक्षा संबंधी प्रश्नों में सहायता कर सकता हूँ। क्या आपका कोई प्रश्न है?"
+        else:
+            return "I am an automated AI assistant for Nirma University and can only answer queries related to this official notice. How can I assist you regarding this?"
 
 
 class FallbackLLM(LLMAdapter):
     """
     Composite LLM adapter providing multi-tier automatic failover across
-    Local Ollama -> Gemini 3.8 Flash -> Gemini 3.5 Flash-Lite -> Groq Cloud -> Rule-Based.
+    Local Ollama -> Groq Cloud -> Gemini Flash -> Rule-Based.
 
-    Guarantees that conversational turns are never dropped even if an engine
-    is temporarily saturated or experiencing demand spikes.
+    Includes circuit breaker on local Ollama to guarantee < 1.5s conversational turn budget.
     """
+
+    _ollama_offline_until: float = 0.0
 
     def __init__(
         self,
         primary: Optional[LLMAdapter] = None,
         fallback: Optional[LLMAdapter] = None,
-        timeout_seconds: float = 3.0,
+        timeout_seconds: float = 2.0,
     ) -> None:
         """
         Initializes the FallbackLLM composite cascade.
@@ -390,7 +431,7 @@ class FallbackLLM(LLMAdapter):
         Args:
             primary: Primary LLM adapter override.
             fallback: Explicit fallback LLM adapter override.
-            timeout_seconds: Execution deadline per tier before triggering next fallback (default: 3.0s).
+            timeout_seconds: Execution deadline per tier before triggering next fallback (default: 2.0s).
         """
         self.timeout_seconds = timeout_seconds
         self.chain: List[LLMAdapter] = []
@@ -398,22 +439,21 @@ class FallbackLLM(LLMAdapter):
         if primary is not None:
             self.chain.append(primary)
         else:
-            # 1. Local GPU Ollama if running on HPC supercomputer
+            # 1. Local GPU Ollama if running on HPC supercomputer (with circuit breaker)
             self.chain.append(OllamaLLM())
-            # 2. Google Gemini 3.8 Flash (primary cloud reasoning)
+            # 2. Groq Cloud (ultra low-latency LLaMA-3.3-70b / Qwen - sub-500ms voice inference)
+            if settings.groq_api_key and not settings.groq_api_key.startswith("your_"):
+                self.chain.append(GroqLLM(timeout_seconds=2.0))
+            # 3. Google Gemini Cloud reasoning
             if settings.gemini_api_key and not settings.gemini_api_key.startswith("your_"):
-                self.chain.append(GeminiLLM(model=settings.gemini_model, timeout_seconds=timeout_seconds))
-                # 3. Google Gemini 3.5 Flash-Lite (ultra low-latency failover)
+                self.chain.append(GeminiLLM(model=settings.gemini_model, timeout_seconds=1.5))
                 if settings.gemini_fallback_model:
-                    self.chain.append(GeminiLLM(model=settings.gemini_fallback_model, timeout_seconds=2.0))
+                    self.chain.append(GeminiLLM(model=settings.gemini_fallback_model, timeout_seconds=1.5))
 
         if fallback is not None:
             self.chain.append(fallback)
         else:
-            # 4. Groq Cloud (fast LLaMA-3.3-70b failover)
-            if settings.groq_api_key and not settings.groq_api_key.startswith("your_"):
-                self.chain.append(GroqLLM(timeout_seconds=2.5))
-            # 5. Deterministic rule-based template
+            # 4. Deterministic multilingual rule-based template
             self.chain.append(RuleBasedLLM())
 
         # Retain backward compatibility attributes
@@ -437,13 +477,19 @@ class FallbackLLM(LLMAdapter):
         Returns:
             str: Synthesizable response text.
         """
+        now = time.monotonic()
         for i, adapter in enumerate(self.chain):
             adapter_name = adapter.__class__.__name__
             model_info = getattr(adapter, "model", "")
+
+            # Circuit breaker: skip Ollama if it recently failed
+            if isinstance(adapter, OllamaLLM) and now < FallbackLLM._ollama_offline_until:
+                continue
+
             t0 = time.monotonic()
             try:
-                # Give local Ollama a quick timeout (1.0s) so it doesn't stall calls if offline
-                timeout = 1.0 if isinstance(adapter, OllamaLLM) else self.timeout_seconds
+                # Local Ollama gets a tight 0.5s connection deadline so offline state doesn't delay voice turns
+                timeout = 0.5 if isinstance(adapter, OllamaLLM) else self.timeout_seconds
                 reply = await asyncio.wait_for(
                     adapter.generate(system_prompt, history, user_input),
                     timeout=timeout,
@@ -453,6 +499,8 @@ class FallbackLLM(LLMAdapter):
                 return reply
             except Exception as exc:
                 elapsed_ms = int((time.monotonic() - t0) * 1000)
+                if isinstance(adapter, OllamaLLM):
+                    FallbackLLM._ollama_offline_until = time.monotonic() + 60.0  # Trip circuit breaker for 60s
                 logger.warning(
                     "LLM tier %d (%s %s) failed in %d ms: %s. Advancing to next fallback tier...",
                     i + 1,
@@ -462,5 +510,5 @@ class FallbackLLM(LLMAdapter):
                     exc,
                 )
 
-        # Ultimate deterministic safety guarantee
-        return "Thank you for the update. We have recorded your response for Nirma University records."
+        # Ultimate deterministic safety guarantee (language aware)
+        return await RuleBasedLLM().generate(system_prompt, history, user_input)

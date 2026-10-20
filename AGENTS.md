@@ -326,8 +326,30 @@ Refs: #<issue_number>
 - **System Telemetry Probe**: `/api/system/status` dynamically reports active carrier name, sandbox vs live status, and caller ID to the frontend sidebar.
 
 ### 10.6 Automated Verification Benchmark
-- 174 automated pytest test cases passing across Unit, Integration, Adversarial Security, Plivo & Twilio Webhook State Machines, Concurrency Race, and E2E Lifecycle modules.
+- 182 automated pytest test cases passing across Unit, Integration, Adversarial Security, Plivo & Twilio Webhook State Machines, Concurrency Race, and E2E Lifecycle modules.
 - Frontend built clean with TypeScript compiler (`tsc -b`) and Vite production bundler.
+
+### 10.7 Real-Time Carrier Polling Watchdog & Disconnect Synchronization (`_active_call_watchdog`)
+- **Carrier Disconnect Reliability**: Telecom carriers (especially Twilio Free Trial accounts and network edge drops) may omit terminal callbacks (`status_callback` or `hangup`).
+- **Asynchronous Lifespan Watchdog**: `backend/main.py` runs a 3-second background polling loop (`_active_call_watchdog`) during the FastAPI lifespan. It queries carrier REST APIs for any tasks in `ringing` or `in_progress` status.
+- **Immediate State Synchronization**: On detecting terminal states (`completed`, `busy`, `failed`, `no-answer`, `canceled`), it triggers `_execute_call_hangup()`, persists exact duration and outcome in PostgreSQL, clears active Redis session state, and broadcasts `call_status: completed` via WebSocket to instantly update the UI.
+
+### 10.8 Twilio `<Gather>` Speech Recognition & Multilingual Conversational Pipeline
+- **Interactive Speech Recognition**: Twilio trial restrictions disallow `<Record>` audio harvesting; turns are executed using `<Gather input="speech" language="gu-IN" timeout="4" speechTimeout="auto">` combined with `<Say>` / `<Play>`.
+- **Multilingual Farewell & Disconnect Detection**: Built-in regex matches Gujarati and Hindi farewell cues (`"થેન્ક્યુ"`, `"આભાર"`, `"ધન્યવાદ"`, `"આવજો"`, `"bye"`, `"thanks"`). The agent acknowledges with courteous closing remarks and terminates the call without awkward dead air.
+- **VARCHAR Safety**: Truncates model and provider names to conform to `call_logs.llm_provider VARCHAR(20)` constraint to prevent DB write rejections.
+
+### 10.9 Live Transcript In-Flight Streaming & Dual-Property Protocol (`text` & `content`)
+- **Dual-Property Normalization**: Resolved transcript display mismatches by dual-populating both `text` and `content` across `backend/api/calls.py` and `frontend/src/lib/api-client.ts`.
+- **In-Flight Redis Streaming**: `get_call_transcript(task_id)` queries active in-memory Redis session state (`call:session:{call_uuid}`) before falling back to PostgreSQL, allowing operators to view spoken turns in real time during live calls.
+- **Live Incremental Turns**: Frontend subscribes to `transcript_turn` WebSocket events to append speaker utterances live as speech recognition and LLM inference complete.
+
+### 10.10 Responsive Interface Engineering & Call Disposition UX
+- **Header & Container Resilience**: Applied `min-w-0 flex-1 truncate` across inspector headers to prevent long 34-character Call SIDs (`CA...`) and student details from clipping or overflowing viewport boundaries.
+- **Adaptive Layout**: Headers automatically transition (`flex-col xl:flex-row`) for optimal display across mobile, tablet, and widescreen viewports.
+- **Call Disposition Badges**: Replaced overflowing and disabled `[Transfer Desk]` and `[Hang Up]` buttons on completed calls with a compact `Resolved • Xs` badge. Action buttons are strictly isolated to `in_progress` and `ringing` states.
+- **Ticking Duration Clock**: 1-second live interval dynamically counts elapsed call time from `task.answered_at`.
+
 
 
 

@@ -187,6 +187,25 @@ class PlivoAdapter(BaseTelephonyAdapter):
         """Programmatically terminates an active call asynchronously."""
         return await asyncio.to_thread(self._sync_hangup_call, call_uuid)
 
+    def _sync_transfer_call(self, call_uuid: str, desk_number: str = "+917971606000") -> bool:
+        """Synchronously transfers an active Plivo call to an operator desk."""
+        if call_uuid.startswith("mock_"):
+            logger.info("MOCK TELEPHONY SANDBOX (Plivo): Transferring simulated call %s to %s", call_uuid, desk_number)
+            return True
+        client = self._get_client()
+        try:
+            # Transfer the aleg (caller) to the new number
+            client.calls.transfer(call_uuid=call_uuid, legs="aleg")
+            logger.info("Transferred Plivo call UUID %s to desk %s", call_uuid, desk_number)
+            return True
+        except Exception as exc:
+            logger.error("Failed to transfer Plivo call UUID %s to %s: %s", call_uuid, desk_number, exc)
+            return False
+
+    async def transfer_call(self, call_uuid: str, desk_number: str = "+917971606000") -> bool:
+        """Transfers an active Plivo call asynchronously."""
+        return await asyncio.to_thread(self._sync_transfer_call, call_uuid, desk_number)
+
     def _sync_get_status(self, call_uuid: str) -> str:
         """Synchronous wrapper for querying call status."""
         if call_uuid.startswith("mock_"):

@@ -139,7 +139,7 @@ export interface CallTask {
    *  - 'completed': Call terminated normally after conversation resolution.
    *  - 'failed': Call rejected, carrier timeout, or busy without answer.
    */
-  status: 'pending' | 'ringing' | 'in_progress' | 'completed' | 'failed';
+  status: 'pending' | 'ringing' | 'in_progress' | 'completed' | 'failed' | 'busy' | 'no_answer' | 'cancelled';
   /** Unique carrier request identifier assigned by telephony gateway (Plivo CallUUID / Twilio CallSid). */
   plivo_uuid?: string;
   /** Current retry attempt count for this specific recipient. */
@@ -150,10 +150,18 @@ export interface CallTask {
   outcome?: string;
   /** Human-readable relative timestamp indicating when the call was dialed. */
   placed_at?: string;
+  /** ISO timestamp when recipient answered the call. */
+  answered_at?: string;
   /** Real-time conversational turn snippet streaming over WebSocket for active monitoring. */
   current_turn?: string;
   /** Turn turnaround latency in milliseconds for the latest exchange (<4,000ms SLA target). */
   turn_latency_ms?: number;
+  /** Parent campaign title or topic summary. */
+  campaign_name?: string;
+  /** Script name or category. */
+  script_name?: string;
+  /** Brief summary or reason explaining what the call is about. */
+  summary?: string;
 }
 
 // ==============================================================================

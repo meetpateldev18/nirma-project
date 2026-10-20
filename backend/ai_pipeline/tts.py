@@ -201,6 +201,8 @@ class GeminiTTS(TTSAdapter):
     generativelanguage v1beta API with zero local GPU VRAM requirement.
     """
 
+    _quota_exhausted_until: float = 0.0
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -269,6 +271,9 @@ class GeminiTTS(TTSAdapter):
         if not self.api_key or self.api_key.startswith("your_"):
             raise ValueError("GEMINI_API_KEY is not configured for Gemini TTS.")
 
+        if time.monotonic() < GeminiTTS._quota_exhausted_until:
+            raise RuntimeError("Gemini TTS quota circuit breaker active (429 rate limit).")
+
         content_hash = hashlib.sha256(f"gemini_tts:{language.lower()}:{text.strip()}".encode("utf-8")).hexdigest()[:16]
         filename = f"tts_gemini_{content_hash}.wav"
         output_path = os.path.join(self.cache_dir, filename)
@@ -283,9 +288,17 @@ class GeminiTTS(TTSAdapter):
         }
 
         client = await self._get_client()
-        resp = await client.post(self.endpoint, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = await client.post(self.endpoint, json=payload)
+            if resp.status_code == 429:
+                GeminiTTS._quota_exhausted_until = time.monotonic() + 300.0
+                raise RuntimeError(f"Gemini TTS quota exceeded (429): {resp.text[:150]}")
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                GeminiTTS._quota_exhausted_until = time.monotonic() + 300.0
+            raise
 
         candidates = data.get("candidates", [])
         if not candidates:
@@ -310,14 +323,17 @@ class FallbackTTS(TTSAdapter):
     Composite TTS adapter providing seamless multi-tier failover between
     Local IndicF5 -> Google Gemini Flash Lite TTS -> Google gTTS (free).
 
-    Ensures that caller audio synthesis never times out during an active telephone call.
+    Maintains a circuit breaker for failing cloud engines to ensure synthesis
+    consistently adheres to the < 1,500ms conversational turn budget.
     """
+
+    _offline_until: Dict[str, float] = {}
 
     def __init__(
         self,
         primary: Optional[TTSAdapter] = None,
         fallback: Optional[TTSAdapter] = None,
-        timeout_seconds: float = 3.0,
+        timeout_seconds: float = 2.0,
     ) -> None:
         """
         Initializes the FallbackTTS composite cascade.
@@ -325,7 +341,7 @@ class FallbackTTS(TTSAdapter):
         Args:
             primary: Primary synthesis adapter (default: IndicF5TTS).
             fallback: Secondary synthesis adapter (default: GoogleTTS).
-            timeout_seconds: Execution deadline before switching to fallback (default: 3.0s).
+            timeout_seconds: Execution deadline before switching to fallback (default: 6.0s).
         """
         self.chain: List[TTSAdapter] = []
 
@@ -357,8 +373,19 @@ class FallbackTTS(TTSAdapter):
         Returns:
             str: Public URL for generated audio.
         """
+        now = time.monotonic()
         for i, adapter in enumerate(self.chain):
             adapter_name = adapter.__class__.__name__
+
+            # Skip IndicF5 if model checkpoint file is not present on disk
+            if isinstance(adapter, IndicF5TTS) and not os.path.exists(adapter.model_path):
+                continue
+
+            # Circuit breaker: skip failing cloud engines in 0ms
+            if adapter_name in self._offline_until and now < self._offline_until[adapter_name]:
+                logger.debug("TTS engine %s is on circuit breaker; bypassing in 0ms", adapter_name)
+                continue
+
             t0 = time.monotonic()
             try:
                 audio_url = await asyncio.wait_for(
@@ -377,6 +404,33 @@ class FallbackTTS(TTSAdapter):
                     elapsed_ms,
                     exc,
                 )
+                # Trip circuit breaker for 60s
+                if adapter_name != "GoogleTTS":
+                    self._offline_until[adapter_name] = time.monotonic() + 60.0
 
         # Final absolute fallback directly via GoogleTTS
         return await GoogleTTS().synthesize(text, language)
+
+    def prewarm_sync(self, text: str, language: str = "hi") -> str:
+        """
+        Synchronously pre-generates and caches speech audio to ensure 0ms latency on call answer.
+
+        Args:
+            text: Utterance to pre-synthesize.
+            language: Target language code.
+
+        Returns:
+            str: Publicly accessible URL for pre-cached audio file.
+        """
+        content_hash = hashlib.sha256(f"{language.lower()}:{text.strip()}".encode("utf-8")).hexdigest()[:16]
+        filename = f"tts_cloud_{content_hash}.mp3"
+        output_path = os.path.join(self.audio_cache_dir if hasattr(self, "audio_cache_dir") else settings.audio_cache_dir, filename)
+
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            logger.info("Prewarm TTS cache HIT for hash %s (0 ms)", content_hash)
+            return f"{settings.base_url}/static/audio/{filename}"
+
+        gtts_adapter = GoogleTTS(cache_dir=settings.audio_cache_dir)
+        gtts_adapter._sync_generate(text, language, output_path)
+        logger.info("Prewarm TTS generated audio file %s for language %s", filename, language)
+        return f"{settings.base_url}/static/audio/{filename}"

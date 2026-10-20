@@ -83,7 +83,7 @@ async def test_twilio_answer_valid_task_lifecycle(
     assert "<Response>" in response.text
     assert "<Play>https://calls.nirmauni.ac.in/static/audio/greeting.wav</Play>" in response.text
     assert f"/webhook/twilio/input?task_id={task.id}" in response.text
-    assert 'timeout="2"' in response.text
+    assert 'timeout="4"' in response.text
 
 
 @pytest.mark.asyncio
