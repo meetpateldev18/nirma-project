@@ -92,3 +92,11 @@ minio_data/
 Thumbs.db
 node_modules/
 frontend/node_modules/
+
+# ==========================================
+# Understand Anything Scratch Files
+# ==========================================
+.ua/intermediate/
+.ua/tmp/
+.ua/diff-overlay.json
+.ua/*.mjs

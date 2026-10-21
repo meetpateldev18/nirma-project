@@ -1,0 +1,842 @@
+{
+  "version": "1.0.0",
+  "kind": "codebase",
+  "project": {
+    "name": "nirma-ai-call-agent",
+    "languages": [
+      "conf",
+      "config",
+      "css",
+      "dockerfile",
+      "html",
+      "javascript",
+      "json",
+      "mako",
+      "markdown",
+      "python",
+      "shell",
+      "txt",
+      "typescript",
+      "unknown",
+      "yaml"
+    ],
+    "frameworks": [
+      "FastAPI",
+      "React",
+      "Vite",
+      "TailwindCSS",
+      "Celery",
+      "PostgreSQL",
+      "SQLAlchemy",
+      "Redis",
+      "Plivo",
+      "Twilio",
+      "Ollama"
+    ],
+    "description": "Enterprise AI Call Agent System for Nirma University featuring dual-carrier telephony, multilingual Indic voice pipeline, and TRAI compliance.",
+    "analyzedAt": "2026-10-21T18:24:39.500Z",
+    "gitCommitHash": "005695fae628b5568b60bdc5156420a9eac957dd"
+  },
+  "nodes": [
+    {
+      "id": "domain:telephony-orchestration",
+      "type": "domain",
+      "name": "PSTN Telephony & Carrier Signaling",
+      "summary": "Manages outbound PSTN dialing, multi-carrier abstraction (Plivo and Twilio), real-time webhook state machines, and carrier disconnect synchronization.",
+      "tags": [
+        "telephony",
+        "pstn",
+        "plivo",
+        "twilio",
+        "webhooks"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "CallTask",
+          "CallDispatchResult",
+          "CarrierAdapter",
+          "PlivoXML",
+          "TwiML"
+        ],
+        "businessRules": [
+          "Outbound calling window strictly limited to 09:00:00 - 21:00:00 IST (TRAI compliance)",
+          "Carrier rate limiter throttled to maximum 10 concurrent active dispatches",
+          "Celery workers invoke Plivo/Twilio synchronously; FastAPI endpoints use non-blocking threadpools"
+        ],
+        "crossDomainInteractions": [
+          "Dispatches caller audio bytes to AI Voice Intelligence pipeline upon speech completion",
+          "Streams call disposition and real-time audio waveforms to Live Telemetry & Analytics domain"
+        ]
+      }
+    },
+    {
+      "id": "flow:outbound-call-dispatch",
+      "type": "flow",
+      "name": "Outbound Call Dispatch",
+      "summary": "Schedules, verifies, and dispatches outbound calls to Indian phone numbers via Plivo or Twilio.",
+      "tags": [
+        "outbound",
+        "dialing",
+        "celery-dispatch"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "POST /api/campaigns/{id}/start or Celery Beat scheduler",
+        "entryType": "cron"
+      }
+    },
+    {
+      "id": "step:outbound-call-dispatch:validate-trai-window",
+      "type": "step",
+      "name": "Validate TRAI Window",
+      "summary": "Checks current Indian Standard Time (Asia/Kolkata) against mandated 09:00 - 21:00 operational window.",
+      "tags": [
+        "trai-compliance",
+        "regulatory"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/scheduler/campaign_runner.py",
+      "lineRange": [
+        45,
+        75
+      ]
+    },
+    {
+      "id": "step:outbound-call-dispatch:resolve-carrier-adapter",
+      "type": "step",
+      "name": "Resolve Carrier Adapter",
+      "summary": "Dynamically selects PlivoAdapter or TwilioAdapter based on active environment configuration.",
+      "tags": [
+        "abstract-factory",
+        "carrier-selection"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/telephony/factory.py",
+      "lineRange": [
+        25,
+        55
+      ]
+    },
+    {
+      "id": "step:outbound-call-dispatch:execute-pstn-call",
+      "type": "step",
+      "name": "Execute PSTN Dial",
+      "summary": "Executes carrier API request synchronously in worker process and stores unique carrier Call UUID.",
+      "tags": [
+        "pstn-dial",
+        "carrier-api"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/scheduler/tasks.py",
+      "lineRange": [
+        60,
+        110
+      ]
+    },
+    {
+      "id": "flow:webhook-conversational-loop",
+      "type": "flow",
+      "name": "Interactive Voice Webhook Loop",
+      "summary": "Processes incoming carrier audio webhook callbacks, drives conversational turns, and emits XML instructions.",
+      "tags": [
+        "webhook-loop",
+        "xml-builder",
+        "voice-turn"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "POST /webhook/plivo/record or POST /webhook/twilio/gather",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:webhook-conversational-loop:verify-signature",
+      "type": "step",
+      "name": "Verify Cryptographic Signature",
+      "summary": "Validates carrier HMAC-SHA256 signature (X-Plivo-Signature-V3 or X-Twilio-Signature) to prevent spoofing.",
+      "tags": [
+        "security",
+        "hmac-signature"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/telephony/webhook_handler.py",
+      "lineRange": [
+        50,
+        90
+      ]
+    },
+    {
+      "id": "step:webhook-conversational-loop:process-turn",
+      "type": "step",
+      "name": "Coordinate AI Turn",
+      "summary": "Hands audio recording or speech transcript to the AI pipeline and awaits sub-4s synthesized response.",
+      "tags": [
+        "ai-turn",
+        "audio-dispatch"
+      ],
+      "complexity": "complex",
+      "filePath": "backend/telephony/webhook_handler.py",
+      "lineRange": [
+        120,
+        180
+      ]
+    },
+    {
+      "id": "step:webhook-conversational-loop:render-xml",
+      "type": "step",
+      "name": "Render Carrier XML",
+      "summary": "Constructs escaped Plivo XML (<Speak>, <Record>) or TwiML (<Say>, <Gather>) to continue conversation.",
+      "tags": [
+        "xml-generation",
+        "twiml",
+        "plivoxml"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/telephony/webhook_handler.py",
+      "lineRange": [
+        200,
+        260
+      ]
+    },
+    {
+      "id": "flow:active-call-watchdog",
+      "type": "flow",
+      "name": "Active Call Disconnect Watchdog",
+      "summary": "Asynchronous 3-second background polling loop querying carrier APIs to detect drops and free active lines.",
+      "tags": [
+        "watchdog",
+        "carrier-polling",
+        "cleanup"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "FastAPI Lifespan async background task",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "step:active-call-watchdog:query-carrier-status",
+      "type": "step",
+      "name": "Poll In-Flight Calls",
+      "summary": "Fetches real-time status of all ringing or in-progress call tasks from carrier REST APIs.",
+      "tags": [
+        "rest-poll",
+        "carrier-state"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/main.py",
+      "lineRange": [
+        30,
+        65
+      ]
+    },
+    {
+      "id": "step:active-call-watchdog:synchronize-hangup",
+      "type": "step",
+      "name": "Execute Terminal Hangup",
+      "summary": "Persists duration and disposition outcome to PostgreSQL and cleans in-flight Redis session keys.",
+      "tags": [
+        "hangup-sync",
+        "redis-cleanup"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/telephony/webhook_handler.py",
+      "lineRange": [
+        280,
+        320
+      ]
+    },
+    {
+      "id": "domain:ai-voice-intelligence",
+      "type": "domain",
+      "name": "Multilingual AI Voice Intelligence",
+      "summary": "Sub-4.0s conversational voice pipeline combining local Indic models (IndicConformer, Qwen-14B, IndicF5) with resilient cloud fallbacks.",
+      "tags": [
+        "ai-pipeline",
+        "speech-to-text",
+        "llm",
+        "text-to-speech",
+        "multilingual"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "AudioBuffer",
+          "Transcript",
+          "LLMResponse",
+          "VoiceSynthesisResult"
+        ],
+        "businessRules": [
+          "Total turn latency budget must remain strictly under 4,000 milliseconds",
+          "Opening greeting must deterministically disclose AI identity in compliance with TRAI regulations",
+          "LLM response constrained to maximum 2 short sentences (under 35 words)"
+        ],
+        "crossDomainInteractions": [
+          "Receives carrier audio buffers from Telephony domain",
+          "Emits turn latency metrics and transcripts to Live Telemetry & Analytics domain"
+        ]
+      }
+    },
+    {
+      "id": "flow:speech-to-text-flow",
+      "type": "flow",
+      "name": "Speech-to-Text Transcription",
+      "summary": "Transcribes student voice audio with Indian accent adaptation and automatic cloud failover.",
+      "tags": [
+        "stt",
+        "asr",
+        "multilingual-transcription"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "AIPipeline.process_turn",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "step:speech-to-text-flow:download-audio",
+      "type": "step",
+      "name": "Fetch Carrier Audio",
+      "summary": "Downloads caller recording buffer from carrier storage using HTTP Basic Authentication.",
+      "tags": [
+        "audio-download",
+        "basic-auth"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/ai_pipeline/stt.py",
+      "lineRange": [
+        40,
+        70
+      ]
+    },
+    {
+      "id": "step:speech-to-text-flow:local-indic-conformer",
+      "type": "step",
+      "name": "Infer IndicConformer",
+      "summary": "Transcribes audio using local 0.60B NeMo model with a 2,000ms deadline.",
+      "tags": [
+        "local-model",
+        "nemo-asr"
+      ],
+      "complexity": "complex",
+      "filePath": "backend/ai_pipeline/stt.py",
+      "lineRange": [
+        80,
+        120
+      ]
+    },
+    {
+      "id": "step:speech-to-text-flow:sarvam-fallback",
+      "type": "step",
+      "name": "Sarvam AI Fallback",
+      "summary": "Dispatches raw audio multipart stream to Sarvam Saaras API upon local timeout or error.",
+      "tags": [
+        "cloud-fallback",
+        "sarvam-ai"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/ai_pipeline/stt.py",
+      "lineRange": [
+        130,
+        165
+      ]
+    },
+    {
+      "id": "flow:conversational-reasoning-flow",
+      "type": "flow",
+      "name": "Conversational LLM Reasoning",
+      "summary": "Generates helpful, topic-locked responses while enforcing conversational brevity and context pruning.",
+      "tags": [
+        "llm-reasoning",
+        "context-pruning",
+        "brevity-budget"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "AIPipeline.generate_response",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "step:conversational-reasoning-flow:prune-context",
+      "type": "step",
+      "name": "Prune Conversation History",
+      "summary": "Truncates session history to last 6 messages (3 turns) to maintain optimal token latency.",
+      "tags": [
+        "context-pruning",
+        "latency-optimization"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/ai_pipeline/llm.py",
+      "lineRange": [
+        40,
+        65
+      ]
+    },
+    {
+      "id": "step:conversational-reasoning-flow:ollama-inference",
+      "type": "step",
+      "name": "Ollama Qwen-14B Inference",
+      "summary": "Runs local 4-bit quantized Qwen-14B model on GPU with a 3,500ms execution timeout.",
+      "tags": [
+        "local-llm",
+        "ollama",
+        "qwen-14b"
+      ],
+      "complexity": "complex",
+      "filePath": "backend/ai_pipeline/llm.py",
+      "lineRange": [
+        80,
+        125
+      ]
+    },
+    {
+      "id": "step:conversational-reasoning-flow:groq-fallback",
+      "type": "step",
+      "name": "Groq Cloud Failover",
+      "summary": "Failsover to Groq Llama-3.3-70b API when local Ollama is offline or exceeding deadlines.",
+      "tags": [
+        "groq-api",
+        "cloud-failover"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/ai_pipeline/llm.py",
+      "lineRange": [
+        130,
+        170
+      ]
+    },
+    {
+      "id": "flow:voice-synthesis-flow",
+      "type": "flow",
+      "name": "Voice Audio Synthesis",
+      "summary": "Synthesizes natural Indic language audio for Hindi, Gujarati, and Indian English.",
+      "tags": [
+        "tts",
+        "voice-synthesis",
+        "audio-stream"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "AIPipeline.synthesize_speech",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "step:voice-synthesis-flow:indic-f5-synthesis",
+      "type": "step",
+      "name": "Synthesize IndicF5 Speech",
+      "summary": "Synthesizes audio using local IndicF5 checkpoint within a 600ms latency budget.",
+      "tags": [
+        "local-tts",
+        "indicf5"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/ai_pipeline/tts.py",
+      "lineRange": [
+        35,
+        75
+      ]
+    },
+    {
+      "id": "step:voice-synthesis-flow:cache-audio-buffer",
+      "type": "step",
+      "name": "Cache Audio Buffer",
+      "summary": "Persists synthesized WAV in Redis cache (TTL 300s) for rapid static carrier delivery.",
+      "tags": [
+        "redis-cache",
+        "audio-buffer"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/ai_pipeline/tts.py",
+      "lineRange": [
+        90,
+        120
+      ]
+    },
+    {
+      "id": "domain:campaign-and-student-management",
+      "type": "domain",
+      "name": "Campaign & Student Operations",
+      "summary": "Provides staff user authentication, student roster ingestion, reason-driven script generation, and batch campaign scheduling.",
+      "tags": [
+        "campaigns",
+        "students",
+        "rbac",
+        "roster-import"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": [
+          "StaffUser",
+          "Student",
+          "Campaign",
+          "CallScript"
+        ],
+        "businessRules": [
+          "Operators can only view campaigns and transcripts created by their account",
+          "Staff can upload unstructured calling reasons or documents to auto-synthesize scripts"
+        ],
+        "crossDomainInteractions": [
+          "Supplies validated student phone numbers and campaign scripts to Telephony domain",
+          "Receives real-time completion percentages from Scheduler domain"
+        ]
+      }
+    },
+    {
+      "id": "flow:script-synthesis-flow",
+      "type": "flow",
+      "name": "Reason-Driven Script Synthesis",
+      "summary": "Generates structured AI calling guidelines and greeting templates from faculty notes.",
+      "tags": [
+        "script-writer",
+        "prompt-generation"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "POST /api/campaigns/generate-script",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:script-synthesis-flow:inject-ai-disclosure",
+      "type": "step",
+      "name": "Format AI Transparency Greeting",
+      "summary": "Injects mandatory Nirma University automated AI caller disclosure in target language.",
+      "tags": [
+        "trai-greeting",
+        "transparency"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/ai_pipeline/script_writer.py",
+      "lineRange": [
+        40,
+        70
+      ]
+    },
+    {
+      "id": "step:script-synthesis-flow:generate-guidelines",
+      "type": "step",
+      "name": "Synthesize Topic Constraints",
+      "summary": "Instructs LLM to constrain questions and answers strictly to the provided document context.",
+      "tags": [
+        "topic-locking",
+        "llm-guidelines"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/ai_pipeline/script_writer.py",
+      "lineRange": [
+        75,
+        120
+      ]
+    },
+    {
+      "id": "domain:telemetry-and-analytics",
+      "type": "domain",
+      "name": "Live Telemetry & Executive Analytics",
+      "summary": "Real-time WebSocket streaming of live call state, animated audio waveforms, and statistical reporting of latency percentiles.",
+      "tags": [
+        "analytics",
+        "websockets",
+        "waveforms",
+        "executive-dashboard"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": [
+          "DashboardSummary",
+          "DailyVolumeMetric",
+          "LatencyPercentiles",
+          "WebSocketMessage"
+        ],
+        "businessRules": [
+          "WebSockets require authenticated JWT tokens upon connection establishment",
+          "Latency metrics computed at p50, p95, and p99 percentiles across STT, LLM, and TTS turns"
+        ],
+        "crossDomainInteractions": [
+          "Subscribes to Redis pub/sub events emitted by Telephony and AI Voice Intelligence domains"
+        ]
+      }
+    },
+    {
+      "id": "flow:live-audio-telemetry",
+      "type": "flow",
+      "name": "Live Call Telemetry Streaming",
+      "summary": "Streams active call state transitions and audio waveform levels to operator dashboards.",
+      "tags": [
+        "websocket-stream",
+        "waveform-telemetry"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "WebSocket /ws/calls",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "step:live-audio-telemetry:authenticate-socket",
+      "type": "step",
+      "name": "Authenticate WebSocket Token",
+      "summary": "Extracts and verifies JWT token query parameter before admitting socket to broadcast room.",
+      "tags": [
+        "ws-auth",
+        "jwt-validation"
+      ],
+      "complexity": "simple",
+      "filePath": "backend/websocket/manager.py",
+      "lineRange": [
+        35,
+        60
+      ]
+    },
+    {
+      "id": "step:live-audio-telemetry:broadcast-waveforms",
+      "type": "step",
+      "name": "Broadcast Turn Metrics",
+      "summary": "Dispatches real-time turn transcripts and audio frequency levels to connected UI listeners.",
+      "tags": [
+        "waveform-broadcast",
+        "live-feed"
+      ],
+      "complexity": "moderate",
+      "filePath": "backend/websocket/manager.py",
+      "lineRange": [
+        80,
+        130
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "domain:telephony-orchestration",
+      "target": "flow:outbound-call-dispatch",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:outbound-call-dispatch",
+      "target": "step:outbound-call-dispatch:validate-trai-window",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:outbound-call-dispatch",
+      "target": "step:outbound-call-dispatch:resolve-carrier-adapter",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:outbound-call-dispatch",
+      "target": "step:outbound-call-dispatch:execute-pstn-call",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:telephony-orchestration",
+      "target": "flow:webhook-conversational-loop",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:webhook-conversational-loop",
+      "target": "step:webhook-conversational-loop:verify-signature",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:webhook-conversational-loop",
+      "target": "step:webhook-conversational-loop:process-turn",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:webhook-conversational-loop",
+      "target": "step:webhook-conversational-loop:render-xml",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:telephony-orchestration",
+      "target": "flow:active-call-watchdog",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:active-call-watchdog",
+      "target": "step:active-call-watchdog:query-carrier-status",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:active-call-watchdog",
+      "target": "step:active-call-watchdog:synchronize-hangup",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:ai-voice-intelligence",
+      "target": "flow:speech-to-text-flow",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:speech-to-text-flow",
+      "target": "step:speech-to-text-flow:download-audio",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:speech-to-text-flow",
+      "target": "step:speech-to-text-flow:local-indic-conformer",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:speech-to-text-flow",
+      "target": "step:speech-to-text-flow:sarvam-fallback",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:ai-voice-intelligence",
+      "target": "flow:conversational-reasoning-flow",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:conversational-reasoning-flow",
+      "target": "step:conversational-reasoning-flow:prune-context",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:conversational-reasoning-flow",
+      "target": "step:conversational-reasoning-flow:ollama-inference",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:conversational-reasoning-flow",
+      "target": "step:conversational-reasoning-flow:groq-fallback",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:ai-voice-intelligence",
+      "target": "flow:voice-synthesis-flow",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:voice-synthesis-flow",
+      "target": "step:voice-synthesis-flow:indic-f5-synthesis",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:voice-synthesis-flow",
+      "target": "step:voice-synthesis-flow:cache-audio-buffer",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:campaign-and-student-management",
+      "target": "flow:script-synthesis-flow",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:script-synthesis-flow",
+      "target": "step:script-synthesis-flow:inject-ai-disclosure",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:script-synthesis-flow",
+      "target": "step:script-synthesis-flow:generate-guidelines",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:telemetry-and-analytics",
+      "target": "flow:live-audio-telemetry",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:live-audio-telemetry",
+      "target": "step:live-audio-telemetry:authenticate-socket",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.3
+    },
+    {
+      "source": "flow:live-audio-telemetry",
+      "target": "step:live-audio-telemetry:broadcast-waveforms",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:campaign-and-student-management",
+      "target": "domain:telephony-orchestration",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Enqueues verified student call tasks and scripts into Celery queue for PSTN dialing",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:telephony-orchestration",
+      "target": "domain:ai-voice-intelligence",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Hands off recorded caller speech audio buffers to STT and awaits conversational synthesis",
+      "weight": 0.8
+    },
+    {
+      "source": "domain:telephony-orchestration",
+      "target": "domain:telemetry-and-analytics",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Streams active call durations, state changes, and terminal dispositions to analytics engine",
+      "weight": 0.7
+    },
+    {
+      "source": "domain:ai-voice-intelligence",
+      "target": "domain:telemetry-and-analytics",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Emits sub-pipeline latencies (STT, LLM, TTS) and transcripts for live waveform visualization",
+      "weight": 0.7
+    }
+  ],
+  "layers": [],
+  "tour": []
+}
