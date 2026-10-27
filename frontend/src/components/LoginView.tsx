@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PhoneCall, ShieldCheck, Loader2 } from 'lucide-react';
+import { PhoneCall, ShieldCheck, Loader2, KeyRound } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,6 +97,42 @@ export const LoginView: React.FC = () => {
                 )}
               </Button>
             </form>
+
+            <div className="mt-4 pt-3.5 border-t border-hairline/80">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-medium text-mute flex items-center gap-1">
+                  <KeyRound className="w-3 h-3 text-primary" /> Demo Credentials
+                </span>
+                <span className="text-[10px] text-mute font-mono">click to fill</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('admin@nirmauni.ac.in');
+                    setPassword('Nirma@123');
+                    setError(null);
+                  }}
+                  className="flex flex-col text-left p-2 rounded-xl border border-hairline bg-canvas-subtle hover:bg-canvas-soft hover:border-primary/40 transition-colors"
+                >
+                  <span className="text-[11px] font-semibold text-ink">Administrator</span>
+                  <span className="text-[10px] font-mono text-mute truncate">admin@nirmauni.ac.in</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('operator@nirmauni.ac.in');
+                    setPassword('Nirma@123');
+                    setError(null);
+                  }}
+                  className="flex flex-col text-left p-2 rounded-xl border border-hairline bg-canvas-subtle hover:bg-canvas-soft hover:border-primary/40 transition-colors"
+                >
+                  <span className="text-[11px] font-semibold text-ink">Faculty / Operator</span>
+                  <span className="text-[10px] font-mono text-mute truncate">operator@nirmauni.ac.in</span>
+                </button>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

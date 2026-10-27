@@ -167,7 +167,26 @@ async def list_campaigns(
     res = await session.execute(query)
     campaigns = res.scalars().all()
 
-    items = [CampaignResponse.model_validate(c, from_attributes=True) for c in campaigns]
+    # Efficient batch aggregation of task status counts for the paginated campaigns (single query, zero N+1)
+    status_counts_map: Dict[int, Dict[str, int]] = {}
+    campaign_ids = [c.id for c in campaigns]
+    if campaign_ids:
+        counts_stmt = (
+            select(CallTask.campaign_id, CallTask.status, func.count(CallTask.id))
+            .where(CallTask.campaign_id.in_(campaign_ids))
+            .group_by(CallTask.campaign_id, CallTask.status)
+        )
+        counts_res = await session.execute(counts_stmt)
+        for c_id, status_name, cnt in counts_res.all():
+            if c_id not in status_counts_map:
+                status_counts_map[c_id] = {}
+            status_counts_map[c_id][status_name] = cnt
+
+    items = []
+    for c in campaigns:
+        resp = CampaignResponse.model_validate(c, from_attributes=True)
+        resp.task_counts = status_counts_map.get(c.id, {})
+        items.append(resp)
     return PaginatedCampaigns(total=total, page=page, limit=limit, items=items)
 
 

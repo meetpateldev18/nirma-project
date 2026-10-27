@@ -71,9 +71,12 @@ function AuthenticatedApp() {
   }, [isAdmin]);
 
   const refreshTasks = useCallback(async (campaignList: CallCampaign[]) => {
-    const relevant = campaignList.filter((c) => c.status === 'running' || c.status === 'pending' || c.status === 'completed');
+    // Only fetch individual tasks for active/in-progress/pending campaigns for live channel telemetry
+    const activeOnly = campaignList.filter((c) => c.status === 'running' || c.status === 'pending');
+    // If no running campaigns, keep existing tasks or load top 3 most recent campaigns to populate history
+    const targetCampaigns = activeOnly.length > 0 ? activeOnly : campaignList.slice(0, 3);
     const results = await Promise.all(
-      relevant.map(async (c) => {
+      targetCampaigns.map(async (c) => {
         const cTasks = await api.listCampaignTasks(c.id).catch(() => []);
         return cTasks.map((t) => ({
           ...t,
@@ -88,7 +91,7 @@ function AuthenticatedApp() {
   const refreshCampaigns = useCallback(async () => {
     const data = await api.listCampaigns();
     setCampaigns(data);
-    await refreshTasks(data);
+    refreshTasks(data);
   }, [refreshTasks]);
 
   useEffect(() => {
@@ -97,16 +100,21 @@ function AuthenticatedApp() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const campaignsData = await api.listCampaigns();
+        // Run campaigns and analytics queries in parallel for instant render
+        const [campaignsData] = await Promise.all([
+          api.listCampaigns(),
+          refreshAnalytics(),
+        ]);
         if (cancelled) return;
         setCampaigns(campaignsData);
-        await Promise.all([refreshAnalytics(), refreshTasks(campaignsData)]);
+        // Non-blocking background fetch for tasks so dashboard renders immediately
+        setIsLoading(false);
+        refreshTasks(campaignsData);
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof api.ApiError ? err.message : 'Unable to reach the server.');
+          setIsLoading(false);
         }
-      } finally {
-        if (!cancelled) setIsLoading(false);
       }
     })();
     return () => { cancelled = true; };
