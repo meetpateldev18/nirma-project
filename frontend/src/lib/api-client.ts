@@ -14,11 +14,27 @@ import type { CallCampaign, CallLog, CallScript, CallTask, DailyVolume, Dashboar
 
 const TOKEN_STORAGE_KEY = 'nirma_auth_tokens';
 
+export type StaffRole =
+  | 'super_admin'
+  | 'admin'
+  | 'dean'
+  | 'hod'
+  | 'program_coordinator'
+  | 'class_coordinator'
+  | 'faculty_mentor'
+  | 'operator';
+
 export interface StoredTokens {
   access_token: string;
   refresh_token: string;
-  role: 'admin' | 'operator';
+  role: StaffRole;
   name: string;
+  institute_code?: string;
+  institute_id?: number;
+  department_code?: string;
+  department_id?: number;
+  program_id?: number;
+  division_id?: number;
 }
 
 export function loadStoredTokens(): StoredTokens | null {
@@ -72,6 +88,9 @@ async function tryRefresh(): Promise<boolean> {
           refresh_token: data.refresh_token,
           role: data.role,
           name: data.name,
+          institute_code: data.institute_code,
+          department_code: data.department_code,
+          department_id: data.department_id,
         });
         return true;
       } catch {
@@ -144,6 +163,12 @@ export async function login(email: string, password: string): Promise<StoredToke
     refresh_token: data.refresh_token,
     role: data.role,
     name: data.name,
+    institute_code: data.institute_code,
+    institute_id: data.institute_id,
+    department_code: data.department_code,
+    department_id: data.department_id,
+    program_id: data.program_id,
+    division_id: data.division_id,
   };
   saveStoredTokens(tokens);
   return tokens;
@@ -153,18 +178,46 @@ export interface StaffUser {
   id: number;
   email: string;
   name: string;
-  role: 'admin' | 'operator';
+  role: StaffRole;
+  institute_id?: number | null;
+  department_id?: number | null;
+  program_id?: number | null;
+  division_id?: number | null;
+  institute_code?: string | null;
+  department_code?: string | null;
   is_active: boolean;
   created_at: string;
 }
 
 export const listUsers = () => request<StaffUser[]>('/auth/users');
 
-export const createUser = (payload: { name: string; email: string; password: string; role: 'admin' | 'operator' }) =>
-  request<StaffUser>('/auth/users', { method: 'POST', body: JSON.stringify(payload) });
+export const createUser = (payload: {
+  name: string;
+  email: string;
+  password: string;
+  role: StaffRole;
+  institute_id?: number;
+  department_id?: number;
+  program_id?: number;
+  division_id?: number;
+  institute_code?: string;
+  department_code?: string;
+}) => request<StaffUser>('/auth/users', { method: 'POST', body: JSON.stringify(payload) });
 
-export const updateUser = (id: number, payload: { is_active?: boolean; password?: string }) =>
-  request<StaffUser>(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const updateUser = (
+  id: number,
+  payload: {
+    is_active?: boolean;
+    password?: string;
+    role?: StaffRole;
+    institute_id?: number;
+    department_id?: number;
+    program_id?: number;
+    division_id?: number;
+    institute_code?: string;
+    department_code?: string;
+  }
+) => request<StaffUser>(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
 
 export function logout(): void {
   saveStoredTokens(null);
@@ -349,7 +402,203 @@ export interface StudentSearchResult {
   phone: string;
   department: string | null;
   semester: number | null;
+  institute_id?: number | null;
+  department_id?: number | null;
+  program_id?: number | null;
+  division_id?: number | null;
+  institute_code?: string | null;
+  department_code?: string | null;
+  program_code?: string | null;
+  division_code?: string | null;
+  lab_batch?: string | null;
+  attendance_pct?: number | null;
+  pending_fee_inr?: number | null;
 }
+
+// ==============================================================================
+// Academic Hierarchy Models & Endpoints
+// ==============================================================================
+export interface DivisionSummary {
+  id: number;
+  batch_id: number;
+  code: string;
+  name: string;
+  current_semester: number;
+  is_active: boolean;
+}
+
+export interface BatchTreeNode {
+  id: number;
+  program_id: number;
+  admission_year: number;
+  graduating_year: number;
+  name: string;
+  is_current: boolean;
+  divisions: DivisionSummary[];
+}
+
+export interface ProgramTreeNode {
+  id: number;
+  department_id: number;
+  code: string;
+  name: string;
+  level: string;
+  duration_semesters: number;
+  is_active: boolean;
+  batches: BatchTreeNode[];
+}
+
+export interface DepartmentTreeNode {
+  id: number;
+  institute_id: number;
+  code: string;
+  name: string;
+  hod_name?: string | null;
+  hod_email?: string | null;
+  is_active: boolean;
+  programs: ProgramTreeNode[];
+}
+
+export interface InstituteTreeNode {
+  id: number;
+  code: string;
+  name: string;
+  contact_email?: string | null;
+  is_active: boolean;
+  departments: DepartmentTreeNode[];
+}
+
+export interface AcademicTree {
+  institutes: InstituteTreeNode[];
+}
+
+export interface InstituteSummary {
+  id: number;
+  code: string;
+  name: string;
+  contact_email?: string | null;
+  is_active: boolean;
+}
+
+export interface DepartmentSummary {
+  id: number;
+  institute_id: number;
+  code: string;
+  name: string;
+  hod_name?: string | null;
+  hod_email?: string | null;
+  is_active: boolean;
+}
+
+export const getAcademicTree = () => request<AcademicTree>('/api/academic/tree');
+export const listInstitutes = () => request<InstituteSummary[]>('/api/academic/institutes');
+export const listDepartments = (instituteId?: number) =>
+  request<DepartmentSummary[]>(`/api/academic/departments${instituteId ? `?institute_id=${instituteId}` : ''}`);
+
+export interface BatchSummary {
+  id: number;
+  program_id: number;
+  admission_year: number;
+  graduating_year: number;
+  name: string;
+  is_current: boolean;
+}
+
+export const listBatches = (programId?: number) =>
+  request<BatchSummary[]>(`/api/academic/batches${programId ? `?program_id=${programId}` : ''}`);
+
+export const listDivisions = (batchId?: number) =>
+  request<DivisionSummary[]>(`/api/academic/divisions${batchId ? `?batch_id=${batchId}` : ''}`);
+
+export interface StudentListParams {
+  page?: number;
+  limit?: number;
+  institute_id?: number;
+  department_id?: number;
+  program_id?: number;
+  batch_id?: number;
+  division_id?: number;
+  semester?: number;
+}
+
+export interface PaginatedStudents {
+  total: number;
+  page: number;
+  limit: number;
+  items: StudentSearchResult[];
+}
+
+export async function listStudents(params: StudentListParams = {}): Promise<PaginatedStudents> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.institute_id) query.set('institute_id', String(params.institute_id));
+  if (params.department_id) query.set('department_id', String(params.department_id));
+  if (params.program_id) query.set('program_id', String(params.program_id));
+  if (params.batch_id) query.set('batch_id', String(params.batch_id));
+  if (params.division_id) query.set('division_id', String(params.division_id));
+  if (params.semester) query.set('semester', String(params.semester));
+  const qs = query.toString();
+  return request<PaginatedStudents>(`/api/students${qs ? `?${qs}` : ''}`);
+}
+
+export async function getStudent(studentId: number): Promise<StudentSearchResult> {
+  return request<StudentSearchResult>(`/api/students/${studentId}`);
+}
+
+export interface RosterIngestionResponse {
+  total_rows: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface AcademicAuditLog {
+  id: number;
+  action: string;
+  staff_id?: number | null;
+  staff_email: string;
+  staff_role: string;
+  institute_code?: string | null;
+  department_code?: string | null;
+  target_count: number;
+  target_filter?: Record<string, any> | null;
+  campaign_id?: number | null;
+  created_at: string;
+}
+
+export interface PaginatedAuditLogs {
+  total: number;
+  page: number;
+  limit: number;
+  items: AcademicAuditLog[];
+}
+
+export async function uploadStudentsRoster(file: File): Promise<RosterIngestionResponse> {
+  const tokens = loadStoredTokens();
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch('/api/students/upload', {
+    method: 'POST',
+    headers: tokens?.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = 'Upload failed';
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {}
+    throw new ApiError(res.status, detail);
+  }
+  return res.json();
+}
+
+export const downloadRosterTemplateUrl = '/api/students/template';
+
+export const listAuditLogs = (page = 1, limit = 25) =>
+  request<PaginatedAuditLogs>(`/api/academic/audit-logs?page=${page}&limit=${limit}`);
+
 
 /** Searches active students by name, roll number, or phone — for the "call one person" flow. */
 export async function searchStudents(query: string): Promise<StudentSearchResult[]> {

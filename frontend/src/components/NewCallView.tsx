@@ -1,13 +1,39 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Users, User, Sparkles, Paperclip, X, PhoneCall, Search, FileText, CheckCircle2, ShieldCheck, ArrowRight, RefreshCw, Volume2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  Users,
+  User,
+  Sparkles,
+  Paperclip,
+  X,
+  PhoneCall,
+  Search,
+  FileText,
+  ShieldCheck,
+  RefreshCw,
+  Volume2,
+  Building2,
+  GraduationCap,
+  Lock,
+  Layers,
+  AlertCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/lib/auth-context';
 import * as api from '@/lib/api-client';
-import type { StudentSearchResult, GeneratedScript } from '@/lib/api-client';
+import type {
+  StudentSearchResult,
+  GeneratedScript,
+  AcademicTree,
+  InstituteTreeNode,
+  DepartmentTreeNode,
+  ProgramTreeNode,
+  DivisionSummary,
+} from '@/lib/api-client';
 import { CallCampaign } from '@/services/api';
 
 interface NewCallViewProps {
@@ -15,15 +41,6 @@ interface NewCallViewProps {
   onNavigateToTelemetry: () => void;
   systemStatus?: api.SystemStatus | null;
 }
-
-const DEPARTMENTS = [
-  'Computer Science & Engineering',
-  'Information Technology',
-  'Mechanical Engineering',
-  'Civil Engineering',
-  'Institute of Pharmacy',
-  'Institute of Management',
-];
 
 const LANGUAGES: { value: string; label: string; native: string }[] = [
   { value: 'en', label: 'English', native: 'English (Default)' },
@@ -44,7 +61,31 @@ const initialsOf = (name: string) =>
   name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'ST';
 
 export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavigateToTelemetry, systemStatus }) => {
-  const [mode, setMode] = useState<Mode>('individual');
+  const { user } = useAuth();
+  const userRole = user?.role || 'operator';
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
+  const isDean = userRole === 'dean';
+  const isHod = userRole === 'hod';
+  const isProgramCoordinator = userRole === 'program_coordinator';
+  const isOperator = userRole === 'operator';
+  const isClassCoordinator = userRole === 'class_coordinator';
+  const isFacultyMentor = userRole === 'faculty_mentor';
+
+  const isScopeRestricted = !isSuperAdmin;
+  const isInstLocked = isDean || isHod || isProgramCoordinator || isOperator || isClassCoordinator;
+  const isDeptLocked = isHod || isProgramCoordinator || isOperator || isClassCoordinator;
+  const isProgLocked = isProgramCoordinator;
+  const isDivLocked = isClassCoordinator;
+
+  const [mode, setMode] = useState<Mode>(isFacultyMentor ? 'individual' : 'individual');
+
+  // Academic Hierarchy tree state
+  const [tree, setTree] = useState<AcademicTree | null>(null);
+  const [selectedInstituteId, setSelectedInstituteId] = useState<string>('all');
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('all');
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
+  const [selectedDivisionId, setSelectedDivisionId] = useState<string>('all');
+  const [semester, setSemester] = useState<string>('any');
 
   // Individual-recipient search
   const [studentQuery, setStudentQuery] = useState('');
@@ -53,11 +94,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
   const [isSearching, setIsSearching] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Group targeting
-  const [department, setDepartment] = useState(DEPARTMENTS[0]);
-  const [semester, setSemester] = useState<string>('any');
-
-  // The reason, language, optional document
+  // The reason, language, optional circular document
   const [reason, setReason] = useState('');
   const [language, setLanguage] = useState('en');
   const [document, setDocument] = useState<File | null>(null);
@@ -66,6 +103,98 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
 
+  // Load complete academic tree on mount
+  useEffect(() => {
+    api.getAcademicTree()
+      .then((data) => {
+        setTree(data);
+        // Auto-select and lock according to ABAC sub-roles:
+        if (isDean && user?.institute_id) {
+          setSelectedInstituteId(String(user.institute_id));
+        } else if (isHod || isOperator) {
+          for (const inst of data.institutes) {
+            const foundDept = inst.departments.find(
+              (d) =>
+                (user?.department_id && d.id === user.department_id) ||
+                (user?.department_code && d.code === user.department_code)
+            );
+            if (foundDept) {
+              setSelectedInstituteId(String(inst.id));
+              setSelectedDepartmentId(String(foundDept.id));
+              break;
+            }
+          }
+        } else if (isProgramCoordinator) {
+          for (const inst of data.institutes) {
+            for (const dept of inst.departments) {
+              const foundProg = dept.programs.find(
+                (p) => user?.program_id && p.id === user.program_id
+              );
+              if (foundProg) {
+                setSelectedInstituteId(String(inst.id));
+                setSelectedDepartmentId(String(dept.id));
+                setSelectedProgramId(String(foundProg.id));
+                break;
+              }
+            }
+          }
+        } else if (isClassCoordinator) {
+          for (const inst of data.institutes) {
+            for (const dept of inst.departments) {
+              for (const prog of dept.programs) {
+                for (const batch of prog.batches) {
+                  const foundDiv = batch.divisions.find(
+                    (div) => user?.division_id && div.id === user.division_id
+                  );
+                  if (foundDiv) {
+                    setSelectedInstituteId(String(inst.id));
+                    setSelectedDepartmentId(String(dept.id));
+                    setSelectedProgramId(String(prog.id));
+                    setSelectedDivisionId(String(foundDiv.id));
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, [user, isDean, isHod, isProgramCoordinator, isOperator, isClassCoordinator]);
+
+  // Cascading lists derived from tree
+  const activeInstitute = useMemo<InstituteTreeNode | undefined>(() => {
+    if (!tree || selectedInstituteId === 'all') return undefined;
+    return tree.institutes.find((i) => String(i.id) === selectedInstituteId);
+  }, [tree, selectedInstituteId]);
+
+  const availableDepartments = useMemo<DepartmentTreeNode[]>(() => {
+    if (activeInstitute) return activeInstitute.departments;
+    if (!tree) return [];
+    return tree.institutes.flatMap((i) => i.departments);
+  }, [activeInstitute, tree]);
+
+  const activeDepartment = useMemo<DepartmentTreeNode | undefined>(() => {
+    if (selectedDepartmentId === 'all') return undefined;
+    return availableDepartments.find((d) => String(d.id) === selectedDepartmentId);
+  }, [availableDepartments, selectedDepartmentId]);
+
+  const availablePrograms = useMemo<ProgramTreeNode[]>(() => {
+    if (activeDepartment) return activeDepartment.programs;
+    return [];
+  }, [activeDepartment]);
+
+  const activeProgram = useMemo<ProgramTreeNode | undefined>(() => {
+    if (selectedProgramId === 'all') return undefined;
+    return availablePrograms.find((p) => String(p.id) === selectedProgramId);
+  }, [availablePrograms, selectedProgramId]);
+
+  const availableDivisions = useMemo<DivisionSummary[]>(() => {
+    if (!activeProgram) return [];
+    return activeProgram.batches.flatMap((b) => b.divisions);
+  }, [activeProgram]);
+
+  // Student search effect
   useEffect(() => {
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
     if (studentQuery.trim().length < 2) {
@@ -88,7 +217,13 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
     };
   }, [studentQuery]);
 
-  const recipientReady = mode === 'individual' ? !!selectedStudent : !!department;
+  const recipientReady =
+    mode === 'individual'
+      ? !!selectedStudent
+      : isDeptLocked || isInstLocked
+      ? true
+      : selectedInstituteId !== 'all' || selectedDepartmentId !== 'all';
+
   const canGenerate = recipientReady && reason.trim().length >= 3;
 
   const handleGenerate = useCallback(async () => {
@@ -123,10 +258,17 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
         category: 'custom',
       });
 
-      const targetFilter =
-        mode === 'individual' && selectedStudent
-          ? { student_id: selectedStudent.id }
-          : { department, ...(semester !== 'any' ? { semester: Number(semester) } : {}) };
+      const targetFilter: Record<string, any> = {};
+      if (mode === 'individual' && selectedStudent) {
+        targetFilter.student_id = selectedStudent.id;
+      } else {
+        if (selectedInstituteId !== 'all') targetFilter.institute_id = Number(selectedInstituteId);
+        if (selectedDepartmentId !== 'all') targetFilter.department_id = Number(selectedDepartmentId);
+        if (selectedProgramId !== 'all') targetFilter.program_id = Number(selectedProgramId);
+        if (selectedDivisionId !== 'all') targetFilter.division_id = Number(selectedDivisionId);
+        if (semester !== 'any') targetFilter.semester = Number(semester);
+        if (activeDepartment) targetFilter.department = activeDepartment.name;
+      }
 
       const { campaign, tasksGenerated } = await api.createCampaign({
         name: scriptName,
@@ -161,7 +303,21 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
     } finally {
       setIsLaunching(false);
     }
-  }, [generated, reason, language, mode, selectedStudent, department, semester, onCallLaunched, onNavigateToTelemetry]);
+  }, [
+    generated,
+    reason,
+    language,
+    mode,
+    selectedStudent,
+    selectedInstituteId,
+    selectedDepartmentId,
+    selectedProgramId,
+    selectedDivisionId,
+    semester,
+    activeDepartment,
+    onCallLaunched,
+    onNavigateToTelemetry,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -178,7 +334,9 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                 </div>
                 <div>
                   <CardTitle className="text-sm font-bold text-ink">Target Recipient</CardTitle>
-                  <CardDescription className="text-xs text-body">Choose individual student or cohort</CardDescription>
+                  <CardDescription className="text-xs text-body">
+                    Choose individual student or academic cohort
+                  </CardDescription>
                 </div>
               </div>
               <Badge variant="outline" className="text-[10px] font-mono">
@@ -211,46 +369,84 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   }`}
                 >
                   <Users className="w-4 h-4" />
-                  <span>Department Cohort</span>
+                  <span>Academic Cohort</span>
                 </button>
               </div>
 
               {/* Recipient Input depending on mode */}
               {mode === 'individual' ? (
                 <div className="space-y-2">
-                  <label htmlFor="student-search" className="text-xs font-semibold text-body">
-                    Search Student Directory
+                  <label htmlFor="student-search" className="text-xs font-semibold text-body flex items-center justify-between">
+                    <span>Search University Directory</span>
+                    {isScopeRestricted && (
+                      <span className="text-[10px] text-primary font-mono font-medium flex items-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        {isDean && `Institute ${user?.institute_code || 'ITNU'}`}
+                        {(isHod || isOperator) && `Dept ${user?.department_code || 'CSE'}`}
+                        {isProgramCoordinator && `Program ID ${user?.program_id || ''}`}
+                        {isClassCoordinator && `Division ${user?.division_id || 'A'}`}
+                        {isFacultyMentor && 'Assigned Mentees'}
+                      </span>
+                    )}
                   </label>
                   {selectedStudent ? (
-                    <div className="flex items-center justify-between rounded-xl border border-hairline bg-canvas-elevated p-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary text-white font-semibold flex items-center justify-center text-sm shadow-sm">
-                          {initialsOf(selectedStudent.name)}
+                    <div className="rounded-xl border border-hairline bg-canvas-elevated p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-full bg-primary text-white font-semibold flex items-center justify-center text-sm shadow-sm shrink-0">
+                            {initialsOf(selectedStudent.name)}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-ink flex items-center gap-2">
+                              <span>{selectedStudent.name}</span>
+                              <Badge variant="mono" className="text-[10px] font-mono bg-canvas text-primary border-hairline">
+                                {selectedStudent.roll_number}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-body mt-0.5">
+                              {selectedStudent.department || 'Active Student'}
+                              {selectedStudent.program_code && ` • ${selectedStudent.program_code}`}
+                              {selectedStudent.division_code && ` (Div ${selectedStudent.division_code})`}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-sm font-semibold text-ink flex items-center gap-2">
-                            <span>{selectedStudent.name}</span>
-                            <Badge variant="secondary" className="text-[10px]">
-                              {selectedStudent.department ?? 'Active'}
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-mute font-mono mt-0.5">
-                            Roll: <span className="text-ink">{selectedStudent.roll_number}</span> • Tel: <span className="text-ink tabular-nums">{selectedStudent.phone}</span>
-                          </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedStudent(null);
+                            setStudentQuery('');
+                          }}
+                          className="h-8 text-xs text-mute hover:text-ink"
+                        >
+                          <X className="w-4 h-4 mr-1" /> Change
+                        </Button>
+                      </div>
+
+                      {/* Standing Metrics Bar */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 border-t border-hairline/60 text-xs font-mono">
+                        <div className="bg-white/80 p-2 rounded-lg border border-hairline/50">
+                          <span className="text-[10px] text-mute uppercase block">Phone</span>
+                          <span className="text-ink font-semibold tabular-nums">{selectedStudent.phone}</span>
+                        </div>
+                        <div className="bg-white/80 p-2 rounded-lg border border-hairline/50">
+                          <span className="text-[10px] text-mute uppercase block">Attendance</span>
+                          <span className={`font-semibold tabular-nums ${(selectedStudent.attendance_pct ?? 100) < 75 ? 'text-telemetry-amber' : 'text-live-pulse'}`}>
+                            {selectedStudent.attendance_pct !== null && selectedStudent.attendance_pct !== undefined
+                              ? `${selectedStudent.attendance_pct}%`
+                              : '100%'}
+                          </span>
+                        </div>
+                        <div className="bg-white/80 p-2 rounded-lg border border-hairline/50 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] text-mute uppercase block">Outstanding Fee</span>
+                          <span className={`font-semibold tabular-nums ${(selectedStudent.pending_fee_inr ?? 0) > 0 ? 'text-primary' : 'text-mute'}`}>
+                            {selectedStudent.pending_fee_inr !== null && selectedStudent.pending_fee_inr !== undefined && selectedStudent.pending_fee_inr > 0
+                              ? `₹${selectedStudent.pending_fee_inr.toLocaleString()}`
+                              : 'Nil'}
+                          </span>
                         </div>
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedStudent(null);
-                          setStudentQuery('');
-                        }}
-                        className="h-8 text-xs text-mute hover:text-ink"
-                      >
-                        <X className="w-4 h-4 mr-1" /> Change
-                      </Button>
                     </div>
                   ) : (
                     <div className="relative">
@@ -259,7 +455,11 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                         id="student-search"
                         value={studentQuery}
                         onChange={(e) => setStudentQuery(e.target.value)}
-                        placeholder="Search student by name, roll number (e.g. 22BCE045), or phone..."
+                        placeholder={
+                          isOperator
+                            ? `Search ${user?.department_code || 'CSE'} students by name, roll (e.g. 23BCE045), phone...`
+                            : "Search students by name, roll (e.g. 23BCE045), phone..."
+                        }
                         className="w-full pl-10 pr-10 h-10 rounded-xl border border-hairline-strong bg-white text-sm text-ink placeholder:text-mute focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                       />
                       {isSearching && (
@@ -268,7 +468,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                         </span>
                       )}
                       {studentResults.length > 0 && (
-                        <div className="absolute z-20 mt-1.5 w-full rounded-xl border border-hairline bg-white shadow-xl max-h-56 overflow-y-auto">
+                        <div className="absolute z-20 mt-1.5 w-full rounded-xl border border-hairline bg-white shadow-xl max-h-64 overflow-y-auto divide-y divide-hairline">
                           {studentResults.map((s) => (
                             <button
                               key={s.id}
@@ -277,20 +477,31 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                                 setSelectedStudent(s);
                                 setStudentResults([]);
                               }}
-                              className="w-full text-left px-4 py-2.5 hover:bg-canvas-elevated flex items-center justify-between border-b border-hairline-subtle last:border-0 transition-colors"
+                              className="w-full text-left px-4 py-3 hover:bg-canvas-elevated flex items-center justify-between transition-colors"
                             >
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-full bg-canvas-elevated text-ink font-semibold flex items-center justify-center text-xs">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
                                   {initialsOf(s.name)}
                                 </div>
                                 <div>
-                                  <div className="text-xs font-semibold text-ink">{s.name}</div>
-                                  <div className="text-[11px] text-mute font-mono">
-                                    {s.roll_number} • {s.department ?? 'N/A'}
+                                  <div className="text-xs font-bold text-ink flex items-center gap-2">
+                                    <span>{s.name}</span>
+                                    <span className="font-mono text-[10px] text-mute">{s.roll_number}</span>
+                                  </div>
+                                  <div className="text-[11px] text-mute font-sans mt-0.5">
+                                    {s.department ?? 'Nirma Student'}
+                                    {s.division_code && ` • Div ${s.division_code}`}
                                   </div>
                                 </div>
                               </div>
-                              <span className="text-xs font-mono text-body tabular-nums">{s.phone}</span>
+                              <div className="text-right font-mono text-[11px]">
+                                <div className="text-ink tabular-nums">{s.phone}</div>
+                                {s.attendance_pct !== null && s.attendance_pct !== undefined && (
+                                  <div className={`text-[10px] ${s.attendance_pct < 75 ? 'text-telemetry-amber font-semibold' : 'text-live-pulse'}`}>
+                                    {s.attendance_pct}% Attd
+                                  </div>
+                                )}
+                              </div>
                             </button>
                           ))}
                         </div>
@@ -299,37 +510,144 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-body">Academic Department</label>
-                    <Select value={department} onValueChange={setDepartment}>
-                      <SelectTrigger className="bg-white border-hairline text-ink h-10 rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DEPARTMENTS.map((d) => (
-                          <SelectItem key={d} value={d}>
-                            {d}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                /* Group Mode: Academic Hierarchy Cascading Selectors */
+                <div className="space-y-4">
+                  {/* Faculty Scope Lock Notice */}
+                  {isScopeRestricted && (
+                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary/5 border border-primary/20 text-xs">
+                      <Lock className="w-4 h-4 text-primary shrink-0" />
+                      <div className="text-ink">
+                        <strong className="text-primary font-semibold capitalize">
+                          {userRole.replace('_', ' ')} Clearance:
+                        </strong>{' '}
+                        {isDean && `Authorized to broadcast campaigns across ${user?.institute_code || 'ITNU'}.`}
+                        {(isHod || isOperator) && (
+                          <>
+                            Authorized to broadcast campaigns within{' '}
+                            <span className="font-mono font-semibold">{user?.institute_code || 'ITNU'} / {user?.department_code || 'CSE'}</span>.
+                          </>
+                        )}
+                        {isProgramCoordinator && 'Authorized to broadcast campaigns within your assigned Degree Program.'}
+                        {isClassCoordinator && 'Authorized to broadcast to your assigned Class Division.'}
+                        {isFacultyMentor && 'Mentors are authorized for individual mentee calls.'}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Level 1 & 2: Institute & Department */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-body flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-primary" />
+                        Constituent Institute
+                      </label>
+                      <Select
+                        value={selectedInstituteId}
+                        onValueChange={setSelectedInstituteId}
+                        disabled={isInstLocked}
+                      >
+                        <SelectTrigger className="bg-white border-hairline text-ink h-10 rounded-xl">
+                          <SelectValue placeholder="All Institutes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {!isInstLocked && <SelectItem value="all">All Constituent Institutes</SelectItem>}
+                          {(tree?.institutes ?? []).map((i) => (
+                            <SelectItem key={i.id} value={String(i.id)}>
+                              {i.code} — {i.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-body flex items-center gap-1.5">
+                        <GraduationCap className="w-3.5 h-3.5 text-telemetry-cyan" />
+                        Academic Department
+                      </label>
+                      <Select
+                        value={selectedDepartmentId}
+                        onValueChange={setSelectedDepartmentId}
+                        disabled={isDeptLocked}
+                      >
+                        <SelectTrigger className="bg-white border-hairline text-ink h-10 rounded-xl">
+                          <SelectValue placeholder="All Departments" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {!isDeptLocked && <SelectItem value="all">All Departments</SelectItem>}
+                          {availableDepartments.map((d) => (
+                            <SelectItem key={d.id} value={String(d.id)}>
+                              {d.code} — {d.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-body">Target Semester</label>
-                    <Select value={semester} onValueChange={setSemester}>
-                      <SelectTrigger className="bg-white border-hairline text-ink h-10 rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">All Semesters (Entire Department)</SelectItem>
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-                          <SelectItem key={s} value={String(s)}>
-                            Semester {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+
+                  {/* Level 3 & 4: Degree Program & Division */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <label className="text-xs font-semibold text-body flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-mute" />
+                        Degree Program
+                      </label>
+                      <Select
+                        value={selectedProgramId}
+                        onValueChange={setSelectedProgramId}
+                        disabled={isProgLocked || availablePrograms.length === 0}
+                      >
+                        <SelectTrigger className="bg-white border-hairline text-ink h-10 rounded-xl">
+                          <SelectValue placeholder="All Programs" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Programs</SelectItem>
+                          {availablePrograms.map((p) => (
+                            <SelectItem key={p.id} value={String(p.id)}>
+                              {p.code} ({p.level})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-body">Class Division</label>
+                      <Select
+                        value={selectedDivisionId}
+                        onValueChange={setSelectedDivisionId}
+                        disabled={isDivLocked || availableDivisions.length === 0}
+                      >
+                        <SelectTrigger className="bg-white border-hairline text-ink h-10 rounded-xl">
+                          <SelectValue placeholder="All Divisions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Divisions</SelectItem>
+                          {availableDivisions.map((div) => (
+                            <SelectItem key={div.id} value={String(div.id)}>
+                              Division {div.code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-body">Target Semester</label>
+                      <Select value={semester} onValueChange={setSemester}>
+                        <SelectTrigger className="bg-white border-hairline text-ink h-10 rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">All Semesters</SelectItem>
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+                            <SelectItem key={s} value={String(s)}>
+                              Semester {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               )}
@@ -361,7 +679,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
-                  placeholder="e.g. Remind them their Semester 5 tuition fee payment is pending, and ask if they need assistance with the bank gateway..."
+                  placeholder="e.g. Remind them their Semester 6 exam registration is pending, and ask if they plan to attend tomorrow's review session..."
                   className="w-full px-3.5 py-2.5 rounded-xl border border-hairline-strong bg-white text-sm text-ink placeholder:text-mute resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary leading-relaxed"
                 />
               </div>
@@ -477,7 +795,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   <div className="space-y-1">
                     <h3 className="text-sm font-semibold text-ink">No Script Generated Yet</h3>
                     <p className="text-xs text-mute max-w-xs leading-relaxed">
-                      Select a recipient and describe the call objective on the left. The AI will formulate the conversational greeting and instructions.
+                      Select a recipient or cohort and describe the call objective on the left. The AI will formulate the conversational greeting and instructions.
                     </p>
                   </div>
                   <div className="pt-2 text-[11px] font-mono text-mute flex items-center gap-1.5">
@@ -513,13 +831,25 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   </div>
 
                   {/* Calling Target Summary */}
-                  <div className="p-3 rounded-xl bg-canvas-elevated border border-hairline flex items-center justify-between text-xs font-mono">
-                    <span className="text-mute">Recipient:</span>
-                    <strong className="text-ink truncate max-w-[200px]">
-                      {mode === 'individual' && selectedStudent
-                        ? `${selectedStudent.name} (${selectedStudent.roll_number})`
-                        : `${department} (${semester === 'any' ? 'All' : `Sem ${semester}`})`}
-                    </strong>
+                  <div className="p-3.5 rounded-xl bg-canvas-elevated border border-hairline space-y-1 text-xs font-mono">
+                    <div className="flex items-center justify-between">
+                      <span className="text-mute">Recipient:</span>
+                      <strong className="text-ink truncate max-w-[220px]">
+                        {mode === 'individual' && selectedStudent
+                          ? `${selectedStudent.name} (${selectedStudent.roll_number})`
+                          : activeDepartment
+                          ? `${activeDepartment.name}${selectedProgramId !== 'all' && activeProgram ? ` • ${activeProgram.code}` : ''}${selectedDivisionId !== 'all' ? ` (Div ${availableDivisions.find(d => String(d.id) === selectedDivisionId)?.code})` : ''}`
+                          : selectedInstituteId !== 'all' && activeInstitute
+                          ? `${activeInstitute.name} (All Departments)`
+                          : 'University-Wide Cohort'}
+                      </strong>
+                    </div>
+                    {mode === 'group' && semester !== 'any' && (
+                      <div className="flex items-center justify-between text-[11px] text-mute pt-1 border-t border-hairline/40">
+                        <span>Cohort Filter:</span>
+                        <span className="text-ink">Semester {semester}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Regenerate & Launch CTAs */}

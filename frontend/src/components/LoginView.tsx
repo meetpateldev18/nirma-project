@@ -128,7 +128,7 @@ export const LoginView: React.FC = () => {
                   }}
                   className="flex flex-col text-left p-2 rounded-xl border border-hairline bg-canvas-subtle hover:bg-canvas-soft hover:border-primary/40 transition-colors"
                 >
-                  <span className="text-[11px] font-semibold text-ink">Faculty / Operator</span>
+                  <span className="text-[11px] font-semibold text-ink">Faculty (ITNU CSE)</span>
                   <span className="text-[10px] font-mono text-mute truncate">operator@nirmauni.ac.in</span>
                 </button>
               </div>

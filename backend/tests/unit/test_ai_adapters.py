@@ -393,6 +393,7 @@ async def test_gemini_tts_synthesizes_audio_and_writes_wav(tmp_path):
     from unittest.mock import AsyncMock, MagicMock, patch
     from backend.ai_pipeline.tts import GeminiTTS
 
+    GeminiTTS._quota_exhausted_until = 0.0
     cache_dir = str(tmp_path / "audio_cache")
     adapter = GeminiTTS(
         api_key="AIzaSyTestGeminiKey12345",

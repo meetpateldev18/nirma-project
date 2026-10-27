@@ -15,6 +15,7 @@ interface SidebarProps {
   setActiveTab: (tab: string) => void;
   userName: string;
   userRole: string;
+  userScope?: string;
   onLogout: () => void;
   systemStatus?: SystemStatus | null;
 }
@@ -22,7 +23,7 @@ interface SidebarProps {
 const initialsOf = (name: string) =>
   name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'ST';
 
-export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, setActiveTab, userName, userRole, onLogout, systemStatus }) => {
+export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, setActiveTab, userName, userRole, userScope, onLogout, systemStatus }) => {
   const [internalStatus, setInternalStatus] = useState<SystemStatus | null>(null);
 
   useEffect(() => {
@@ -82,7 +83,12 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, se
       </div>
       <div className="mt-4 text-xs text-mute">Welcome back,</div>
       <div className="text-base font-semibold text-ink">{userName}</div>
-      <div className="text-xs text-mute mt-0.5">{userRole === 'admin' ? 'Administrator' : 'Faculty'}</div>
+      <div className="text-xs text-mute mt-0.5">{userRole === 'admin' ? 'System Administrator' : 'Faculty Operator'}</div>
+      {userScope && (
+        <div className="mt-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-mono font-semibold">
+          {userScope}
+        </div>
+      )}
     </div>
 
     {/* Nav */}

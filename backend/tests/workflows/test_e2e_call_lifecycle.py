@@ -92,6 +92,10 @@ async def test_full_call_lifecycle_from_campaign_to_transcript(
     # --------------------------------------------------------------------------
     # Step 3: Celery worker dispatches call task (transition to 'ringing')
     # --------------------------------------------------------------------------
+    # Clear any auto-dispatched call_log so e2e test steps start from pristine state
+    await db_session.execute(CallLog.__table__.delete().where(CallLog.task_id == task_id))
+    await db_session.commit()
+
     with patch("backend.scheduler.tasks.get_sync_session") as mock_session_ctx:
         mock_session_ctx.return_value.__enter__.return_value = sync_db_session
         dispatch_status = place_call_task(task_id)

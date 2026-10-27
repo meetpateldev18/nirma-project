@@ -23,6 +23,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
+    Numeric,
     String,
     Text,
     text,
@@ -41,6 +43,129 @@ class Base(DeclarativeBase):
     pass
 
 
+class Institution(Base):
+    """Top-level educational institution / university root."""
+
+    __tablename__ = "institutions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)  # 'NIRMA'
+    name: Mapped[str] = mapped_column(String(150), nullable=False)              # 'Nirma University'
+    domain: Mapped[str] = mapped_column(String(100), unique=True, nullable=False) # 'nirmauni.ac.in'
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    institutes: Mapped[List["Institute"]] = relationship("Institute", back_populates="institution")
+
+
+class Institute(Base):
+    """Constituent institute (e.g. Institute of Technology - ITNU, Management - IMNU)."""
+
+    __tablename__ = "institutes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    institution_id: Mapped[int] = mapped_column(Integer, ForeignKey("institutions.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)  # 'ITNU', 'IMNU', 'IPNU'
+    name: Mapped[str] = mapped_column(String(150), nullable=False)              # 'Institute of Technology'
+    director_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    institution: Mapped["Institution"] = relationship("Institution", back_populates="institutes")
+    departments: Mapped[List["Department"]] = relationship("Department", back_populates="institute")
+    students: Mapped[List["Student"]] = relationship("Student", back_populates="institute_rel")
+
+
+class Department(Base):
+    """Academic department within an institute (e.g. Computer Science & Engineering)."""
+
+    __tablename__ = "departments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    institute_id: Mapped[int] = mapped_column(Integer, ForeignKey("institutes.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)               # 'CSE', 'ECE', 'ME'
+    name: Mapped[str] = mapped_column(String(150), nullable=False)              # 'Computer Science and Engineering'
+    hod_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    hod_email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    institute: Mapped["Institute"] = relationship("Institute", back_populates="departments")
+    programs: Mapped[List["AcademicProgram"]] = relationship("AcademicProgram", back_populates="department")
+    students: Mapped[List["Student"]] = relationship("Student", back_populates="department_rel")
+
+    __table_args__ = (
+        Index("uq_departments_inst_code", "institute_id", "code", unique=True),
+    )
+
+
+class AcademicProgram(Base):
+    """Degree program track (e.g. B.Tech in CSE, M.Tech Data Science, MCA)."""
+
+    __tablename__ = "academic_programs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    department_id: Mapped[int] = mapped_column(Integer, ForeignKey("departments.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)               # 'BCE', 'BAI', 'MCE', 'MCA'
+    name: Mapped[str] = mapped_column(String(150), nullable=False)              # 'B.Tech in Computer Science and Engineering'
+    level: Mapped[str] = mapped_column(String(20), default="UG", nullable=False)# 'UG', 'PG', 'INTEGRATED', 'DOCTORAL'
+    duration_semesters: Mapped[int] = mapped_column(Integer, default=8, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    department: Mapped["Department"] = relationship("Department", back_populates="programs")
+    batches: Mapped[List["AcademicBatch"]] = relationship("AcademicBatch", back_populates="program")
+    students: Mapped[List["Student"]] = relationship("Student", back_populates="program_rel")
+
+    __table_args__ = (
+        Index("uq_programs_dept_code", "department_id", "code", unique=True),
+    )
+
+
+class AcademicBatch(Base):
+    """Admission cohort (e.g. Class of 2021-2025)."""
+
+    __tablename__ = "academic_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    program_id: Mapped[int] = mapped_column(Integer, ForeignKey("academic_programs.id"), nullable=False, index=True)
+    admission_year: Mapped[int] = mapped_column(Integer, nullable=False)        # 2021
+    graduating_year: Mapped[int] = mapped_column(Integer, nullable=False)       # 2025
+    name: Mapped[str] = mapped_column(String(50), nullable=False)               # 'Batch of 2021-2025'
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    program: Mapped["AcademicProgram"] = relationship("AcademicProgram", back_populates="batches")
+    divisions: Mapped[List["AcademicDivision"]] = relationship("AcademicDivision", back_populates="batch")
+    students: Mapped[List["Student"]] = relationship("Student", back_populates="batch_rel")
+
+    __table_args__ = (
+        Index("uq_batches_program_year", "program_id", "admission_year", unique=True),
+    )
+
+
+class AcademicDivision(Base):
+    """Division section within a batch (e.g. Division A, Division B)."""
+
+    __tablename__ = "academic_divisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(Integer, ForeignKey("academic_batches.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False)               # 'A', 'B', 'C'
+    name: Mapped[str] = mapped_column(String(50), nullable=False)               # 'Division A'
+    current_semester: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    batch: Mapped["AcademicBatch"] = relationship("AcademicBatch", back_populates="divisions")
+    students: Mapped[List["Student"]] = relationship("Student", back_populates="division_rel")
+
+    __table_args__ = (
+        Index("uq_divisions_batch_code", "batch_id", "code", unique=True),
+    )
+
+
 class StaffUser(Base):
     """
     Staff and administrative portal users with role-based access control.
@@ -49,8 +174,12 @@ class StaffUser(Base):
         id: Primary key surrogate identifier.
         email: Unique institutional email address (e.g. 'operator@nirmauni.ac.in').
         name: Full human name of the staff member.
-        role: Security clearance role ('admin' or 'operator').
+        role: Security clearance role ('admin', 'dean', 'hod', 'operator').
         password_hash: Bcrypt cryptographic password hash.
+        institute_id: Scoped constituent institute foreign key.
+        department_id: Scoped academic department foreign key.
+        institute_code: Cached institute code (e.g. 'ITNU').
+        department_code: Cached department code (e.g. 'CSE').
         is_active: Status flag indicating whether the account is enabled.
         created_at: Account creation timestamp.
     """
@@ -62,6 +191,12 @@ class StaffUser(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="operator", nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    institute_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("institutes.id"), nullable=True, index=True)
+    department_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("departments.id"), nullable=True, index=True)
+    program_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("academic_programs.id"), nullable=True, index=True)
+    division_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("academic_divisions.id"), nullable=True, index=True)
+    institute_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    department_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
@@ -81,17 +216,25 @@ class StaffUser(Base):
 
 class Student(Base):
     """
-    Student profile information, contact details, and language preferences.
+    Student profile information, contact details, and academic hierarchy attributes.
 
     Attributes:
         id: Primary key identifier.
-        roll_number: Unique university roll number (e.g. '21BCE001').
+        roll_number: Unique university roll number (e.g. '21BCE045').
         name: Full student name.
         phone: Primary E.164 phone number.
         alt_phone: Secondary/parent emergency phone number.
         language_pref: Preferred language code ('hi', 'gu', 'en').
-        department: Academic department (e.g. 'Computer Science & Engineering').
-        semester: Current academic semester (1-8).
+        department: Academic department string (e.g. 'Computer Science & Engineering').
+        semester: Current academic semester (1-10).
+        institute_id: Foreign key referencing the constituent institute (e.g. ITNU).
+        department_id: Foreign key referencing the academic department.
+        program_id: Foreign key referencing the academic degree program.
+        batch_id: Foreign key referencing the admission cohort batch.
+        division_id: Foreign key referencing the class division.
+        lab_batch: Practical laboratory batch identifier (e.g. 'A1', 'A2').
+        pending_fee_inr: Outstanding semester fee balance.
+        attendance_pct: Aggregate course attendance percentage.
         whatsapp_number: Optional phone number for automated WhatsApp follow-ups.
         is_active: Status flag indicating whether student is currently enrolled.
         created_at: Record creation timestamp.
@@ -108,6 +251,18 @@ class Student(Base):
     language_pref: Mapped[str] = mapped_column(String(10), default="hi", nullable=False)
     department: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     semester: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Hierarchical scoping foreign keys (nullable for backwards compatibility)
+    institute_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("institutes.id"), nullable=True, index=True)
+    department_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("departments.id"), nullable=True, index=True)
+    program_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("academic_programs.id"), nullable=True, index=True)
+    batch_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("academic_batches.id"), nullable=True, index=True)
+    division_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("academic_divisions.id"), nullable=True, index=True)
+    mentor_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("staff_users.id"), nullable=True, index=True)
+
+    lab_batch: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    pending_fee_inr: Mapped[float] = mapped_column(Numeric(10, 2), default=0.00, nullable=False)
+    attendance_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=100.00, nullable=False)
     whatsapp_number: Mapped[Optional[str]] = mapped_column(String(15), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -119,10 +274,16 @@ class Student(Base):
 
     # Relationships
     call_tasks: Mapped[List["CallTask"]] = relationship("CallTask", back_populates="student")
+    institute_rel: Mapped[Optional["Institute"]] = relationship("Institute", back_populates="students")
+    department_rel: Mapped[Optional["Department"]] = relationship("Department", back_populates="students")
+    program_rel: Mapped[Optional["AcademicProgram"]] = relationship("AcademicProgram", back_populates="students")
+    batch_rel: Mapped[Optional["AcademicBatch"]] = relationship("AcademicBatch", back_populates="students")
+    division_rel: Mapped[Optional["AcademicDivision"]] = relationship("AcademicDivision", back_populates="students")
 
     __table_args__ = (
         Index("idx_students_phone", "phone"),
         Index("idx_students_dept_sem_active", "department", "semester", "is_active"),
+        Index("idx_students_dept_id_active", "department_id", "is_active"),
     )
 
     def __repr__(self) -> str:
@@ -360,3 +521,52 @@ class CallLog(Base):
 
     def __repr__(self) -> str:
         return f"<CallLog(id={self.id}, task_id={self.task_id}, avg_ms={self.avg_latency_ms})>"
+
+
+class AcademicAuditLog(Base):
+    """
+    Immutable compliance audit ledger tracking outbound dialing and data ingestion actions.
+
+    Attributes:
+        id: Primary key surrogate identifier.
+        action: Audit action name ('campaign_dispatched', 'individual_call_initiated', 'student_roster_uploaded').
+        staff_id: Initiating staff user primary key.
+        staff_email: Cached institutional email address of initiating user.
+        staff_role: Cached security clearance role of initiating user.
+        institute_code: Cached institute code (e.g. 'ITNU').
+        department_code: Cached department code (e.g. 'CSE').
+        target_count: Number of student recipients impacted by the action.
+        target_filter: JSON metadata specifying academic criteria / parameters.
+        campaign_id: Optional linked campaign primary key.
+        ip_address: Client IP address from request headers.
+        created_at: Audit event timestamp in UTC.
+    """
+
+    __tablename__ = "academic_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    staff_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("staff_users.id"), nullable=True, index=True)
+    staff_email: Mapped[str] = mapped_column(String(100), nullable=False)
+    staff_role: Mapped[str] = mapped_column(String(30), nullable=False)
+    institute_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    department_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    target_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    target_filter: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    campaign_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("call_campaigns.id"), nullable=True, index=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+
+    # Relationships
+    staff: Mapped[Optional["StaffUser"]] = relationship("StaffUser")
+    campaign: Mapped[Optional["CallCampaign"]] = relationship("CallCampaign")
+
+    __table_args__ = (
+        Index("idx_audit_logs_action_created", "action", "created_at"),
+        Index("idx_audit_logs_staff", "staff_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AcademicAuditLog(id={self.id}, action='{self.action}', staff='{self.staff_email}', count={self.target_count})>"

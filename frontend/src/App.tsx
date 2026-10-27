@@ -212,6 +212,13 @@ function AuthenticatedApp() {
         setActiveTab={(t) => setActiveTab(t as TabId)}
         userName={user?.name ?? 'Staff'}
         userRole={user?.role ?? 'operator'}
+        userScope={
+          user?.role === 'admin'
+            ? 'University-Wide'
+            : user?.institute_code && user?.department_code
+            ? `${user.institute_code} / ${user.department_code}`
+            : user?.department_code ?? undefined
+        }
         onLogout={logout}
         systemStatus={systemStatus}
       />

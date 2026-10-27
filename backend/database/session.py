@@ -97,6 +97,36 @@ async def async_session_scope() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def set_rls_session_context(
+    session: AsyncSession,
+    role: str,
+    user_id: int | None = None,
+    institute_id: int | None = None,
+    department_id: int | None = None,
+    program_id: int | None = None,
+    division_id: int | None = None,
+) -> None:
+    """Sets PostgreSQL session variables for Gate 2 Row-Level Security (RLS) enforcement."""
+    try:
+        bind = session.bind or async_engine
+        if bind and bind.dialect.name == "postgresql":
+            from sqlalchemy import text
+            await session.execute(text(f"SET LOCAL app.current_user_role = '{role}';"))
+            if institute_id:
+                await session.execute(text(f"SET LOCAL app.current_institute_id = '{institute_id}';"))
+            if department_id:
+                await session.execute(text(f"SET LOCAL app.current_department_id = '{department_id}';"))
+            if program_id:
+                await session.execute(text(f"SET LOCAL app.current_program_id = '{program_id}';"))
+            if division_id:
+                await session.execute(text(f"SET LOCAL app.current_division_id = '{division_id}';"))
+            if user_id:
+                await session.execute(text(f"SET LOCAL app.current_user_id = '{user_id}';"))
+    except Exception:
+        # Gracefully pass in dialects or environments that don't support custom session variables
+        pass
+
+
 # ------------------------------------------------------------------------------
 # 2. Synchronous Engine & Session Factory (Celery Workers & Beat Tasks)
 # ------------------------------------------------------------------------------

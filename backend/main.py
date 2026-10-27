@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
+from backend.api.academic import router as academic_router
 from backend.api.analytics import router as analytics_router
 from backend.api.auth import router as auth_router
 from backend.api.calls import router as calls_router
@@ -198,6 +199,7 @@ app.mount(
 # Router Bindings
 # ------------------------------------------------------------------------------
 app.include_router(auth_router)
+app.include_router(academic_router)
 app.include_router(campaigns_router)
 app.include_router(calls_router)
 app.include_router(students_router)

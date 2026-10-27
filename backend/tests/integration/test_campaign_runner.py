@@ -133,3 +133,74 @@ def test_campaign_runner_invalid_campaign_returns_zero(sync_db_session: Session)
     """Verifies that attempting task generation for a non-existent campaign safely returns 0."""
     result = CampaignRunner.generate_tasks_for_campaign(999999, sync_db_session)
     assert result == 0
+
+
+def test_campaign_runner_creator_department_scoping(sync_db_session: Session):
+    """
+    Verifies that when an operator/faculty member creates a campaign,
+    the generated tasks are strictly clamped to their assigned department,
+    preventing cross-department calling even if target_filter has no department restriction.
+    """
+    from backend.database.models import StaffUser, Department, Institute
+
+    # Create faculty user scoped to CSE (dept_id = 101)
+    dept = Department(institute_id=1, code="CSE", name="Computer Science", is_active=True)
+    sync_db_session.add(dept)
+    sync_db_session.flush()
+
+    faculty = StaffUser(
+        email="faculty.cse@nirmauni.ac.in",
+        name="CSE Faculty",
+        role="operator",
+        password_hash="fakehash",
+        department_id=dept.id,
+        department_code="CSE",
+        is_active=True,
+    )
+    sync_db_session.add(faculty)
+    sync_db_session.flush()
+
+    script = CallScript(name="Faculty Script", category="general", language="en", system_prompt="p", opening_message="o")
+    sync_db_session.add(script)
+    sync_db_session.flush()
+
+    # Seed 1 CSE student and 1 Mechanical student
+    s_cse = Student(
+        roll_number="SCOPED_CSE_01",
+        name="CSE Student",
+        phone="+919876509901",
+        department_id=dept.id,
+        department="Computer Science",
+        is_active=True,
+    )
+    s_me = Student(
+        roll_number="SCOPED_ME_01",
+        name="ME Student",
+        phone="+919876509902",
+        department_id=999,
+        department="Mechanical",
+        is_active=True,
+    )
+    sync_db_session.add_all([s_cse, s_me])
+    sync_db_session.commit()
+
+    # Campaign created by CSE faculty with an open filter (no department specified)
+    campaign = CallCampaign(
+        name="Open Scope Announcement",
+        script_id=script.id,
+        target_filter={},
+        scheduled_at=utc_now(),
+        status="pending",
+        created_by=faculty.id,
+    )
+    sync_db_session.add(campaign)
+    sync_db_session.commit()
+
+    # Run generator — should only generate 1 task for the CSE student, NOT the ME student!
+    count = CampaignRunner.generate_tasks_for_campaign(campaign.id, sync_db_session)
+    assert count == 1
+
+    tasks = sync_db_session.query(CallTask).filter(CallTask.campaign_id == campaign.id).all()
+    assert len(tasks) == 1
+    assert tasks[0].student_id == s_cse.id
+

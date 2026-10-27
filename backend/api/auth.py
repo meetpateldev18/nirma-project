@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
-from backend.database.models import StaffUser
+from backend.database.models import Department, Institute, StaffUser
 from backend.database.session import get_async_session
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,12 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     role: str
     name: str
+    institute_code: Optional[str] = None
+    institute_id: Optional[int] = None
+    department_code: Optional[str] = None
+    department_id: Optional[int] = None
+    program_id: Optional[int] = None
+    division_id: Optional[int] = None
 
 
 class RefreshRequest(BaseModel):
@@ -66,6 +72,12 @@ class StaffUserResponse(BaseModel):
     email: str
     name: str
     role: str
+    institute_id: Optional[int] = None
+    department_id: Optional[int] = None
+    program_id: Optional[int] = None
+    division_id: Optional[int] = None
+    institute_code: Optional[str] = None
+    department_code: Optional[str] = None
     is_active: bool
     created_at: datetime
 
@@ -168,6 +180,12 @@ async def login(
         refresh_token=refresh_token,
         role=user.role,
         name=user.name,
+        institute_code=user.institute_code,
+        institute_id=user.institute_id,
+        department_code=user.department_code,
+        department_id=user.department_id,
+        program_id=user.program_id,
+        division_id=user.division_id,
     )
 
 
@@ -199,6 +217,12 @@ async def refresh_token(
         refresh_token=payload.refresh_token,
         role=user.role,
         name=user.name,
+        institute_code=user.institute_code,
+        institute_id=user.institute_id,
+        department_code=user.department_code,
+        department_id=user.department_id,
+        program_id=user.program_id,
+        division_id=user.division_id,
     )
 
 
@@ -216,13 +240,26 @@ class UserCreateRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=72)
-    role: str = Field("operator", pattern="^(admin|operator)$")
+    role: str = Field("operator", pattern="^(admin|operator|dean|hod|program_coordinator|class_coordinator|faculty_mentor)$")
+    institute_id: Optional[int] = None
+    department_id: Optional[int] = None
+    program_id: Optional[int] = None
+    division_id: Optional[int] = None
+    institute_code: Optional[str] = None
+    department_code: Optional[str] = None
 
 
 class UserUpdateRequest(BaseModel):
-    """Payload for an admin enabling/disabling an account or resetting its password."""
+    """Payload for an admin enabling/disabling an account, resetting password, or changing scope."""
     is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=8, max_length=72)
+    role: Optional[str] = Field(None, pattern="^(admin|operator|dean|hod|program_coordinator|class_coordinator|faculty_mentor)$")
+    institute_id: Optional[int] = None
+    department_id: Optional[int] = None
+    program_id: Optional[int] = None
+    division_id: Optional[int] = None
+    institute_code: Optional[str] = None
+    department_code: Optional[str] = None
 
 
 @router.get("/users", response_model=list[StaffUserResponse])
@@ -245,17 +282,38 @@ async def create_user(
     existing = await session.execute(select(StaffUser).where(StaffUser.email == payload.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
+    inst_code = payload.institute_code
+    if payload.institute_id and not inst_code:
+        inst_res = await session.execute(select(Institute).where(Institute.id == payload.institute_id))
+        inst = inst_res.scalar_one_or_none()
+        if inst:
+            inst_code = inst.code
+
+    dept_code = payload.department_code
+    if payload.department_id and not dept_code:
+        dept_res = await session.execute(select(Department).where(Department.id == payload.department_id))
+        dept = dept_res.scalar_one_or_none()
+        if dept:
+            dept_code = dept.code
+
     user = StaffUser(
         email=payload.email,
         name=payload.name.strip(),
         role=payload.role,
         password_hash=get_password_hash(payload.password),
+        institute_id=payload.institute_id,
+        department_id=payload.department_id,
+        program_id=payload.program_id,
+        division_id=payload.division_id,
+        institute_code=inst_code,
+        department_code=dept_code,
         is_active=True,
     )
     session.add(user)
     await session.commit()
     await session.refresh(user)
-    logger.info("Account '%s' (%s) created by admin %s", user.email, user.role, admin.email)
+    logger.info("Account '%s' (%s) created by admin %s (Scope: %s/%s)", user.email, user.role, admin.email, inst_code, dept_code)
     return user
 
 
@@ -266,7 +324,7 @@ async def update_user(
     admin: StaffUser = Depends(require_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> StaffUser:
-    """Enables/disables an account or resets its password (Admin required)."""
+    """Enables/disables an account, resets password, or modifies scoping (Admin required)."""
     result = await session.execute(select(StaffUser).where(StaffUser.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -277,6 +335,22 @@ async def update_user(
         user.is_active = payload.is_active
     if payload.password:
         user.password_hash = get_password_hash(payload.password)
+    if payload.institute_id is not None:
+        user.institute_id = payload.institute_id
+        inst_res = await session.execute(select(Institute).where(Institute.id == payload.institute_id))
+        inst = inst_res.scalar_one_or_none()
+        user.institute_code = inst.code if inst else payload.institute_code
+    if payload.role:
+        user.role = payload.role
+    if payload.division_id is not None:
+        user.division_id = payload.division_id
+    if payload.program_id is not None:
+        user.program_id = payload.program_id
+    if payload.department_id is not None:
+        user.department_id = payload.department_id
+        dept_res = await session.execute(select(Department).where(Department.id == payload.department_id))
+        dept = dept_res.scalar_one_or_none()
+        user.department_code = dept.code if dept else payload.department_code
     await session.commit()
     await session.refresh(user)
     logger.info("Account '%s' updated by admin %s", user.email, admin.email)
