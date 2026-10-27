@@ -57,17 +57,37 @@ def build_opening_message(reason: str, language: str) -> str:
 
 
 def _fallback_system_prompt(reason: str, language: str) -> str:
-    """Deterministic system prompt used when no LLM is reachable to write one."""
+    """Deterministic, boundary-enforced voice system prompt for Nirma University call campaigns."""
     language_name = LANGUAGE_NAMES.get(language, "English")
     clean_reason = reason.strip().rstrip(".!?")
-    return (
-        f"You are an automated calling assistant for Nirma University. "
-        f"The sole purpose of this call is: {clean_reason}. "
-        f"Stay strictly on this topic for the entire call. If the caller asks about anything "
-        f"unrelated, politely explain you can only help with this topic and redirect back to it. "
-        f"Answer in a maximum of 2 short sentences (under 30 words). Never use markdown, bullet "
-        f"points, or asterisks — this is a spoken phone call. Respond in {language_name}."
-    )
+
+    if language == "gu":
+        return (
+            f"તમે નિર્મા યુનિવર્સિટીના સત્તાવાર AI વોઈસ આસિસ્ટન્ટ છો. "
+            f"આ કૉલનો એકમાત્ર હેતુ છે: {clean_reason}. "
+            f"સમગ્ર કૉલ દરમિયાન ફક્ત આ સૂચના પર જ વાત કરો. "
+            f"જો વિદ્યાર્થી કોઈ અન્ય વિષય અથવા સામાન્ય જ્ઞાન પૂછે, તો નમ્રતાપૂર્વક જણાવો કે તમે ફક્ત આ સૂચના માટે જ સહાય કરી શકો છો. "
+            f"જવાબ મહત્તમ 1 થી 2 ટૂંકા વાક્યોમાં (30 શબ્દોથી ઓછા) આપો. કોઈ માર્કડાઉન, બુલેટ પોઇન્ટ કે ફૂદડીનો ઉપયોગ કરવો નહીં."
+        )
+    elif language == "hi":
+        return (
+            f"आप निरमा विश्वविद्यालय के आधिकारिक AI वॉइस असिस्टेंट हैं। "
+            f"इस कॉल का एकमात्र उद्देश्य है: {clean_reason}। "
+            f"पूरी कॉल के दौरान सख्ती से इसी सूचना पर केंद्रित रहें। "
+            f"यदि कॉलर किसी असंबंधित विषय या सामान्य ज्ञान के बारे में पूछता है, तो विनम्रता से बताएं कि आप केवल इस सूचना में सहायता कर सकते हैं। "
+            f"उत्तर अधिकतम 1 से 2 छोटे वाक्यों में (30 शब्दों से कम) दें। कभी भी मार्कडाउन, बुलेट पॉइंट्स या विशेष चिह्नों का उपयोग न करें।"
+        )
+    else:
+        return (
+            f"You are the official AI voice assistant for Nirma University. "
+            f"The sole purpose of this call is: {clean_reason}. "
+            f"Stay strictly on this topic for the entire conversation. "
+            f"If the caller asks about anything unrelated, politely explain that you can only assist with this notice, and redirect back. "
+            f"If you do not know a specific detail, advise checking nirmauni.ac.in or the Student Section. "
+            f"Answer in a maximum of 2 short sentences (strictly under 30 words). "
+            f"Never use markdown, bullet points, or asterisks — this is spoken audio. "
+            f"Respond clearly in {language_name}."
+        )
 
 
 async def generate_system_prompt(
@@ -76,7 +96,7 @@ async def generate_system_prompt(
     document_text: Optional[str] = None,
 ) -> str:
     """
-    Asks the configured LLM to write a topic-locked system prompt for this call's reason.
+    Asks the configured LLM to write a topic-locked, boundary-enforced system prompt for this call's reason.
 
     Args:
         reason: Free-text reason for the call, as typed by staff.
@@ -95,20 +115,23 @@ async def generate_system_prompt(
         else ""
     )
     meta_instructions = (
-        "You write short operating instructions for an AI phone-calling assistant. "
-        "Output ONLY the instructions themselves — no preamble, no quotation marks, no markdown."
+        "You write production operating instructions for an enterprise AI phone-calling assistant representing Nirma University. "
+        "Output ONLY the system prompt itself — no conversational preamble, no quotation marks, no markdown symbols."
     )
     task = (
-        f'Write system instructions for an AI voice assistant whose ONLY purpose on this call is: '
+        f'Write system instructions for a Nirma University AI voice assistant whose ONLY purpose on this call is: '
         f'"{reason.strip()}".{document_clause}\n\n'
-        f"The instructions must require the assistant to: stay strictly on this topic and this topic "
-        f"only for the whole call; if asked about anything unrelated, politely decline and redirect "
-        f"back to the topic above; answer in at most 2 short sentences, under 30 words; never use "
-        f"markdown, bullet points, or asterisks since this is spoken audio; respond in {language_name}."
+        f"CRITICAL REQUIREMENTS:\n"
+        f"1. Identity: The assistant must act as a polite, helpful, official representative of Nirma University.\n"
+        f"2. Strict Boundaries: Stay locked onto this topic. If asked anything out-of-scope (general knowledge, coding, politics, personal advice), politely deflect back to this notice.\n"
+        f"3. Anti-Hallucination: Never guess missing facts; advise verifying on nirmauni.ac.in or with the Student Section.\n"
+        f"4. Brevity (Voice SLA): Responses must be at most 1 to 2 short sentences (strictly under 30 words).\n"
+        f"5. Spoken Style: Prohibit all markdown formatting, asterisks, bullet points, or numbered lists.\n"
+        f"6. Language: The assistant must respond in {language_name}."
     )
 
     try:
-        llm = FallbackLLM(OllamaLLM(), GroqLLM())
+        llm = FallbackLLM()
         generated = await asyncio.wait_for(llm.generate(meta_instructions, [], task), timeout=10.0)
         generated = (generated or "").strip()
         if len(generated) >= 20:

@@ -137,11 +137,23 @@ class MockRedisClient:
         self._ttls.pop(key, None)
         return deleted
 
-    async def hset(self, key: str, mapping: Dict[str, Any]) -> int:
+    async def hset(
+        self,
+        key: str,
+        field: Optional[str] = None,
+        value: Optional[Any] = None,
+        mapping: Optional[Dict[str, Any]] = None,
+    ) -> int:
         if key not in self._hashes:
             self._hashes[key] = {}
-        self._hashes[key].update({k: str(v) for k, v in mapping.items()})
-        return len(mapping)
+        count = 0
+        if mapping:
+            self._hashes[key].update({k: str(v) for k, v in mapping.items()})
+            count += len(mapping)
+        if field is not None and value is not None:
+            self._hashes[key][str(field)] = str(value)
+            count += 1
+        return count
 
     async def hgetall(self, key: str) -> Dict[str, str]:
         return dict(self._hashes.get(key, {}))

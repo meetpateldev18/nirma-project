@@ -224,3 +224,267 @@ async def test_twilio_fallback(async_client: AsyncClient):
     response = await async_client.post("/webhook/twilio/fallback")
     assert response.status_code == 200
     assert "<Hangup" in response.text
+
+
+@pytest.mark.asyncio
+async def test_twilio_silence_escalation_ladder(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    seed_students: List[Student],
+):
+    """Verifies 3-tier silence escalation ladder: Soft Reprompt -> Warning -> Graceful Disconnect."""
+    script = CallScript(
+        name="Silence Test Script",
+        category="notice",
+        language="en",
+        system_prompt="Test prompt",
+        opening_message="Hello, this is Nirma University.",
+    )
+    db_session.add(script)
+    await db_session.commit()
+    await db_session.refresh(script)
+
+    campaign = CallCampaign(name="Silence Camp", script_id=script.id, scheduled_at=utc_now())
+    db_session.add(campaign)
+    await db_session.commit()
+    await db_session.refresh(campaign)
+
+    task = CallTask(
+        campaign_id=campaign.id,
+        student_id=seed_students[0].id,
+        student_phone=seed_students[0].phone,
+        script_id=script.id,
+        status="in_progress",
+        scheduled_at=utc_now(),
+    )
+    db_session.add(task)
+    await db_session.commit()
+    await db_session.refresh(task)
+
+    call_sid = "CA_silence_test_sid"
+
+    # Step 1: Answer call to establish Redis session
+    answer_payload = {"CallSid": call_sid, "From": "+15005550006", "To": seed_students[0].phone}
+    with patch("backend.ai_pipeline.tts.GoogleTTS.synthesize", new_callable=AsyncMock) as mock_tts:
+        mock_tts.return_value = "https://calls.nirmauni.ac.in/audio.wav"
+        ans_res = await async_client.post(f"/webhook/twilio/answer?task_id={task.id}", data=answer_payload)
+        assert ans_res.status_code == 200
+
+    # Step 2: Caller says nothing (empty SpeechResult) -> Tier 1 Soft Reprompt
+    silence_payload = {"CallSid": call_sid, "SpeechResult": ""}
+    res_tier1 = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=silence_payload)
+    assert res_tier1.status_code == 200
+    assert "Are you still there" in res_tier1.text
+    assert "<Gather" in res_tier1.text
+    assert 'timeout="5"' in res_tier1.text
+
+    # Step 3: Caller says nothing again -> Tier 2 Final Warning
+    res_tier2 = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=silence_payload)
+    assert res_tier2.status_code == 200
+    assert "I didn't hear anything" in res_tier2.text
+    assert "<Gather" in res_tier2.text
+    assert 'timeout="4"' in res_tier2.text
+
+    # Step 4: Caller stays silent third time -> Tier 3 Polite Disconnect with <Hangup/>
+    res_tier3 = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=silence_payload)
+    assert res_tier3.status_code == 200
+    assert "Since I haven't heard from you" in res_tier3.text
+    assert "<Hangup" in res_tier3.text
+
+    import asyncio
+    await asyncio.sleep(0.1)
+    await db_session.refresh(task)
+    assert task.status == "failed"
+    assert task.outcome == "no_answer"
+
+
+@pytest.mark.asyncio
+async def test_twilio_silence_reset_when_user_speaks(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    seed_students: List[Student],
+):
+    """Verifies that an active user speech utterance resets the silence escalation counter to 0."""
+    script = CallScript(
+        name="Reset Silence Script",
+        category="notice",
+        language="en",
+        system_prompt="Test assistant.",
+        opening_message="Hello from Nirma University.",
+    )
+    db_session.add(script)
+    await db_session.commit()
+    await db_session.refresh(script)
+
+    campaign = CallCampaign(name="Reset Camp", script_id=script.id, scheduled_at=utc_now())
+    db_session.add(campaign)
+    await db_session.commit()
+    await db_session.refresh(campaign)
+
+    task = CallTask(
+        campaign_id=campaign.id,
+        student_id=seed_students[0].id,
+        student_phone=seed_students[0].phone,
+        script_id=script.id,
+        status="in_progress",
+        scheduled_at=utc_now(),
+    )
+    db_session.add(task)
+    await db_session.commit()
+    await db_session.refresh(task)
+
+    call_sid = "CA_reset_silence_sid"
+
+    # 1. Answer call
+    answer_payload = {"CallSid": call_sid, "From": "+15005550006", "To": seed_students[0].phone}
+    with patch("backend.ai_pipeline.tts.GoogleTTS.synthesize", new_callable=AsyncMock) as mock_tts:
+        mock_tts.return_value = "https://calls.nirmauni.ac.in/audio.wav"
+        await async_client.post(f"/webhook/twilio/answer?task_id={task.id}", data=answer_payload)
+
+    # 2. Trigger Tier 1 silence
+    silence_payload = {"CallSid": call_sid, "SpeechResult": ""}
+    res_tier1 = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=silence_payload)
+    assert "Are you still there" in res_tier1.text
+
+    # 3. Caller speaks!
+    speech_payload = {"CallSid": call_sid, "SpeechResult": "Yes I am here, tell me about admissions."}
+    with patch("backend.ai_pipeline.llm.FallbackLLM.generate", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = "Admissions are open until next Friday."
+        res_speech = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=speech_payload)
+    assert res_speech.status_code == 200
+    assert "Admissions are open" in res_speech.text
+
+    # 4. Now if caller stays silent again, it starts back at Tier 1 Soft Reprompt (not Tier 2!)
+    res_next_silence = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=silence_payload)
+    assert "Are you still there" in res_next_silence.text
+
+
+@pytest.mark.asyncio
+async def test_twilio_slow_llm_triggers_filler_and_redirect_flow(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    seed_students: List[Student],
+):
+    """Verifies that slow LLM inference triggers localized filler <Say> + <Redirect> to prevent carrier timeout."""
+    import asyncio
+
+    script = CallScript(
+        name="Slow LLM Script",
+        category="notice",
+        language="en",
+        system_prompt="Test assistant.",
+        opening_message="Hello from Nirma University.",
+    )
+    db_session.add(script)
+    await db_session.commit()
+    await db_session.refresh(script)
+
+    campaign = CallCampaign(name="Slow Camp", script_id=script.id, scheduled_at=utc_now())
+    db_session.add(campaign)
+    await db_session.commit()
+    await db_session.refresh(campaign)
+
+    task = CallTask(
+        campaign_id=campaign.id,
+        student_id=seed_students[0].id,
+        student_phone=seed_students[0].phone,
+        script_id=script.id,
+        status="in_progress",
+        scheduled_at=utc_now(),
+    )
+    db_session.add(task)
+    await db_session.commit()
+    await db_session.refresh(task)
+
+    call_sid = "CA_slow_llm_sid_999"
+
+    # 1. Answer call
+    answer_payload = {"CallSid": call_sid, "From": "+15005550006", "To": seed_students[0].phone}
+    with patch("backend.ai_pipeline.tts.GoogleTTS.synthesize", new_callable=AsyncMock) as mock_tts:
+        mock_tts.return_value = "https://calls.nirmauni.ac.in/audio.wav"
+        await async_client.post(f"/webhook/twilio/answer?task_id={task.id}", data=answer_payload)
+
+    # 2. Simulate slow LLM (takes 2.8s, exceeding 2.0s fast-path deadline)
+    async def _mock_slow_llm(*args, **kwargs):
+        await asyncio.sleep(2.3)
+        return "Here is your detailed examination result."
+
+    speech_payload = {"CallSid": call_sid, "SpeechResult": "What is my grade in mathematics?"}
+    with patch("backend.ai_pipeline.llm.FallbackLLM.generate", side_effect=_mock_slow_llm):
+        res_input = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=speech_payload)
+
+    # Must return immediate TwiML with filler and <Redirect>
+    assert res_input.status_code == 200
+    assert "Please give me a moment while I check that for you" in res_input.text
+    assert "<Redirect" in res_input.text
+    assert f"/webhook/twilio/continue?task_id={task.id}" in res_input.text
+
+    # Allow the background worker to finish saving the pending response in Redis
+    await asyncio.sleep(0.5)
+
+    # 3. Simulate Twilio following the <Redirect> to /webhook/twilio/continue
+    continue_payload = {"CallSid": call_sid, "turn": "2"}
+    res_continue = await async_client.post(f"/webhook/twilio/continue?task_id={task.id}&turn=2&call_uuid={call_sid}", data=continue_payload)
+
+    assert res_continue.status_code == 200
+    assert "Here is your detailed examination result" in res_continue.text
+    assert "<Gather" in res_continue.text
+
+
+@pytest.mark.asyncio
+async def test_twilio_multilingual_filler_gujarati(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    seed_students: List[Student],
+):
+    """Verifies that Gujarati call sessions play native Gujarati filler prompt when LLM is slow."""
+    import asyncio
+
+    script = CallScript(
+        name="Gujarati Notice",
+        category="notice",
+        language="gu",
+        system_prompt="તમે નિર્મા યુનિવર્સિટીના સહાયક છો.",
+        opening_message="નમસ્તે, નિર્મા યુનિવર્સિટીમાં આપનું સ્વાગત છે.",
+    )
+    db_session.add(script)
+    await db_session.commit()
+    await db_session.refresh(script)
+
+    campaign = CallCampaign(name="Guj Camp", script_id=script.id, scheduled_at=utc_now())
+    db_session.add(campaign)
+    await db_session.commit()
+    await db_session.refresh(campaign)
+
+    task = CallTask(
+        campaign_id=campaign.id,
+        student_id=seed_students[0].id,
+        student_phone=seed_students[0].phone,
+        script_id=script.id,
+        status="in_progress",
+        scheduled_at=utc_now(),
+    )
+    db_session.add(task)
+    await db_session.commit()
+    await db_session.refresh(task)
+
+    call_sid = "CA_gujarati_sid_123"
+
+    # 1. Answer call
+    answer_payload = {"CallSid": call_sid, "From": "+15005550006", "To": seed_students[0].phone}
+    with patch("backend.ai_pipeline.tts.GoogleTTS.synthesize", new_callable=AsyncMock) as mock_tts:
+        mock_tts.return_value = "https://calls.nirmauni.ac.in/audio.wav"
+        await async_client.post(f"/webhook/twilio/answer?task_id={task.id}", data=answer_payload)
+
+    # 2. Slow LLM in Gujarati
+    async def _mock_slow_llm(*args, **kwargs):
+        await asyncio.sleep(2.3)
+        return "પરીક્ષા આવતા સોમવારે શરૂ થશે."
+
+    speech_payload = {"CallSid": call_sid, "SpeechResult": "પરીક્ષા ક્યારે છે?"}
+    with patch("backend.ai_pipeline.llm.FallbackLLM.generate", side_effect=_mock_slow_llm):
+        res_input = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=speech_payload)
+
+    assert res_input.status_code == 200
+    assert "કૃપા કરીને થોડીવાર રાહ જુઓ, હું માહિતી ચકાસી રહ્યો છું." in res_input.text
+    assert "<Redirect" in res_input.text
