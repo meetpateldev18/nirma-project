@@ -2,7 +2,7 @@
 Application Configuration Module — Pydantic Settings & Environment Management.
 
 This module loads, validates, and manages all runtime configuration parameters
-for the Nirma University AI Call Agent. It enforces externalization of all
+for the Nirma Calling Assistant. It enforces externalization of all
 carrier secrets, database credentials, AI model endpoints, and institutional domain
 bindings via environment variables, strictly adhering to the Twelve-Factor App methodology.
 
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # --------------------------------------------------------------------------
     # Application & Core Runtime
     # --------------------------------------------------------------------------
-    app_name: str = Field(default="Nirma AI Call Agent", description="Application service name")
+    app_name: str = Field(default="Nirma Calling Assistant", description="Application service name")
     app_env: str = Field(default="development", description="Runtime environment")
     debug: bool = Field(default=False, description="Enable debug mode")
     log_level: str = Field(default="INFO", description="Standard logging level")

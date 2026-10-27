@@ -1,7 +1,7 @@
 """
 Database Models Module — SQLAlchemy 2.0 Declarative ORM Schemas.
 
-This module defines the relational database models for the Nirma University AI Call Agent.
+This module defines the relational database models for the Nirma Calling Assistant.
 It tracks students, staff users, reusable call scripts, outbound campaigns,
 individual execution tasks, and complete conversation transcripts.
 

@@ -33,7 +33,7 @@
       "Twilio",
       "Ollama"
     ],
-    "description": "Enterprise AI Call Agent System for Nirma University featuring dual-carrier telephony, multilingual Indic voice pipeline, and TRAI compliance.",
+    "description": "Enterprise Nirma Calling Assistant System for Nirma University featuring dual-carrier telephony, multilingual Indic voice pipeline, and TRAI compliance.",
     "analyzedAt": "2026-10-21T18:24:39.500Z",
     "gitCommitHash": "005695fae628b5568b60bdc5156420a9eac957dd"
   },

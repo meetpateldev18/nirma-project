@@ -1,7 +1,7 @@
 /**
  * Conversational Transcript Component.
  *
- * Renders turn-by-turn spoken dialogue between the Nirma AI Voice Agent
+ * Renders turn-by-turn spoken dialogue between the Nirma Calling Assistant
  * and the student recipient, with latency benchmarks, carrier speech bubbles,
  * role-specific avatars, live transcribing indicator, and clipboard export.
  *
@@ -66,7 +66,7 @@ export const ConversationalTranscript: React.FC<ConversationalTranscriptProps> =
     if (spokenTurns.length === 0) return;
     const formatted = spokenTurns
       .map((t) => {
-        const speaker = t.role === 'assistant' ? 'Nirma AI Voice Agent' : studentName;
+        const speaker = t.role === 'assistant' ? 'Nirma Calling Assistant' : studentName;
         const time = t.timestamp ? `[${t.timestamp}] ` : '';
         const latency = t.latency_ms ? ` (${t.latency_ms}ms)` : '';
         const text = t.text || (t as any).content || '';
@@ -158,7 +158,7 @@ export const ConversationalTranscript: React.FC<ConversationalTranscriptProps> =
                 >
                   {isAssistant ? (
                     <>
-                      <span className="font-semibold text-body">Nirma AI Voice Agent</span>
+                      <span className="font-semibold text-body">Nirma Calling Assistant</span>
                       {turn.timestamp && (
                         <>
                           <span>•</span>

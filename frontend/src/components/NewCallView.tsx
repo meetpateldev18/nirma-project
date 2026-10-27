@@ -458,7 +458,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
           <Card className="h-full flex flex-col justify-between">
             <CardHeader className="p-5 pb-3 border-b border-hairline flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-sm font-bold text-ink">AI Voice Agent Preview</CardTitle>
+                <CardTitle className="text-sm font-bold text-ink">Calling Assistant Preview</CardTitle>
                 <CardDescription className="text-xs text-body">
                   Simulated PSTN spoken output & prompt constraints
                 </CardDescription>

@@ -1,7 +1,7 @@
 """
 Application Main Entrypoint — FastAPI ASGI Server & Route Aggregator.
 
-This module initializes the core FastAPI web application for the Nirma University AI Call Agent.
+This module initializes the core FastAPI web application for the Nirma Calling Assistant.
 It mounts CORS middleware, provisions static audio file serving, binds all REST/WebSocket routers,
 and configures application lifecycle hooks for database connection validation.
 

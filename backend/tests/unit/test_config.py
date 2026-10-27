@@ -13,7 +13,7 @@ from backend.config import Settings
 def test_default_settings_instantiation():
     """Verifies that default settings load with expected non-empty institutional defaults."""
     config = Settings()
-    assert config.app_name == "Nirma AI Call Agent"
+    assert config.app_name == "Nirma Calling Assistant"
     assert config.base_url.startswith("http")
     assert not config.base_url.endswith("/")
     assert config.jwt_algorithm == "HS256"

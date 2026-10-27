@@ -2,7 +2,7 @@
  * API Service Client & Telemetry Data Contracts Module.
  *
  * This module defines the complete TypeScript interfaces, data transfer objects (DTOs),
- * and client-side initial seed fixtures for the Nirma University AI Call Agent Web Portal.
+ * and client-side initial seed fixtures for the Nirma Calling Assistant Web Portal.
  * It serves as the single source of truth for all telemetry metrics, campaign scheduling,
  * conversational transcript logging, and carrier task statuses consumed by the dashboard.
  *

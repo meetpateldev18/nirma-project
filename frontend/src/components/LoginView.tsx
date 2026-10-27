@@ -21,7 +21,7 @@ export const LoginView: React.FC = () => {
     try {
       await login(email, password);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to reach the AI Call Agent backend.');
+      setError(err instanceof ApiError ? err.message : 'Unable to reach the Nirma Calling Assistant backend.');
     } finally {
       setIsSubmitting(false);
     }
@@ -34,8 +34,8 @@ export const LoginView: React.FC = () => {
           <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
             <PhoneCall className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-primary tracking-tight">NIRMA CALLS</h1>
-          <p className="text-xs text-mute">AI Call Agent</p>
+          <h1 className="text-xl font-bold text-primary tracking-tight">NIRMA CALLING ASSISTANT</h1>
+          <p className="text-xs text-mute">Nirma Calling Assistant</p>
         </div>
 
         <Card className="border-0 shadow-none">

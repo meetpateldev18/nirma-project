@@ -190,7 +190,7 @@ function AuthenticatedApp() {
       case 'users':
         return { label: 'Faculty Access Control', desc: 'Manage departmental faculty permissions and operator access accounts' };
       default:
-        return { label: 'Dashboard', desc: 'Nirma University AI Voice Agent • High-Performance Computing Platform' };
+        return { label: 'Dashboard', desc: 'Nirma Calling Assistant • High-Performance Computing Platform' };
     }
   }, [activeTab]);
 

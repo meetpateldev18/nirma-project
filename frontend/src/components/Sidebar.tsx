@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ tabs, activeTab, se
         <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center" aria-hidden="true">
           <PhoneCall className="w-4 h-4 text-white" />
         </div>
-        <span className="font-bold text-lg tracking-tight text-primary">NIRMA CALLS</span>
+        <span className="font-bold text-lg tracking-tight text-primary">NIRMA CALLING ASSISTANT</span>
       </div>
       <button
         type="button"

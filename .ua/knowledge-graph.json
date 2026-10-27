@@ -33,7 +33,7 @@
       "Twilio",
       "Ollama"
     ],
-    "description": "AI Call Agent System for Nirma University with real-time telephony, automated speech recognition, and multilingual voice workflows.",
+    "description": "Nirma Calling Assistant System for Nirma University with real-time telephony, automated speech recognition, and multilingual voice workflows.",
     "analyzedAt": "2026-10-21T18:19:59.628Z",
     "gitCommitHash": "005695fae628b5568b60bdc5156420a9eac957dd"
   },
@@ -10772,7 +10772,7 @@
       "type": "document",
       "name": "README.md",
       "filePath": "README.md",
-      "summary": "System architecture manual and comprehensive developer guide for Nirma University AI Call Agent.",
+      "summary": "System architecture manual and comprehensive developer guide for Nirma Calling Assistant.",
       "tags": [
         "docs",
         "system-guide",
@@ -18661,7 +18661,7 @@
     {
       "order": 1,
       "title": "System Architecture & Directives",
-      "description": "Start with the comprehensive system documentation and architectural directives governing the AI Call Agent for Nirma University.",
+      "description": "Start with the comprehensive system documentation and architectural directives governing the Nirma Calling Assistant.",
       "nodeIds": [
         "document:README.md",
         "document:AGENTS.md"
