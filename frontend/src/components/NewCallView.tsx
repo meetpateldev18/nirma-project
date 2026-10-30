@@ -662,7 +662,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   2
                 </div>
                 <div>
-                  <CardTitle className="text-sm font-bold text-ink">Call Intent & Context</CardTitle>
+                  <CardTitle className="text-sm font-bold text-ink">Call Intent &amp; Context</CardTitle>
                   <CardDescription className="text-xs text-body">Natural language purpose for the voice agent</CardDescription>
                 </div>
               </div>
@@ -778,7 +778,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
               <div>
                 <CardTitle className="text-sm font-bold text-ink">Calling Assistant Preview</CardTitle>
                 <CardDescription className="text-xs text-body">
-                  Simulated PSTN spoken output & prompt constraints
+                  Simulated PSTN spoken output &amp; prompt constraints
                 </CardDescription>
               </div>
               <Badge variant={generated ? 'live' : 'secondary'} className="text-[10px] font-mono uppercase">
@@ -823,7 +823,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-body">
                       <span className="font-semibold text-ink flex items-center gap-1.5">
-                        <span>AI Knowledge Base & Instructions</span>
+                        <span>AI Knowledge Base &amp; Instructions</span>
                         {generated.used_document && (
                           <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-mono font-normal">
                             Document Integrated

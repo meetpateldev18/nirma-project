@@ -168,7 +168,7 @@ export const UsersView: React.FC = () => {
         <Card className="hover:shadow-md transition-shadow">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs text-mute font-medium">Faculty & Operators</span>
+              <span className="text-xs text-mute font-medium">Faculty &amp; Operators</span>
               <div className="text-2xl font-bold text-ink tabular-nums mt-1">{operatorCount}</div>
               <span className="text-[11px] text-mute font-mono">Scoped academic access</span>
             </div>
@@ -371,7 +371,7 @@ export const UsersView: React.FC = () => {
                     {rosterFile ? rosterFile.name : 'Select or drop .csv student roster'}
                   </span>
                   <span className="text-[10px] text-mute font-mono mt-0.5">
-                    Decomposes roll taxonomy, links batches & divisions automatically
+                    Decomposes roll taxonomy, links batches &amp; divisions automatically
                   </span>
                   <input
                     type="file"
