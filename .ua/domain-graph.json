@@ -34,8 +34,8 @@
       "Ollama"
     ],
     "description": "Enterprise Nirma Calling Assistant System for Nirma University featuring dual-carrier telephony, multilingual Indic voice pipeline, and TRAI compliance.",
-    "analyzedAt": "2026-10-21T18:24:39.500Z",
-    "gitCommitHash": "005695fae628b5568b60bdc5156420a9eac957dd"
+    "analyzedAt": "2026-10-30T13:02:50.911Z",
+    "gitCommitHash": "37ace278afd82e455d703d9aa171360a3f939d58"
   },
   "nodes": [
     {

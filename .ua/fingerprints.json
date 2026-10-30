@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "005695fae628b5568b60bdc5156420a9eac957dd",
-  "generatedAt": "2026-10-21T18:15:15.975Z",
+  "gitCommitHash": "37ace278afd82e455d703d9aa171360a3f939d58",
+  "generatedAt": "2026-10-30T13:02:39.823Z",
   "files": {
     ".agents/rules/engineering_standards.md": {
       "filePath": ".agents/rules/engineering_standards.md",
@@ -1509,7 +1509,7 @@
     },
     ".env.example": {
       "filePath": ".env.example",
-      "contentHash": "75cfab9aa03056517f8838715091df1b2103ea72b8d1afcac916aa78089c4e58",
+      "contentHash": "4c574661419f326a6d5312e9946cc003bfa511e64ab36688febf6e94a91dc58d",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -1565,6 +1565,16 @@
       "imports": [],
       "exports": [],
       "totalLines": 381,
+      "hasStructuralAnalysis": false
+    },
+    "TODO.md": {
+      "filePath": "TODO.md",
+      "contentHash": "622452d29c2e7af2e95239d384242119744285f81a0810a888a9bd73288edcca",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 260,
       "hasStructuralAnalysis": false
     },
     "backend/README.md": {
@@ -1636,8 +1646,38 @@
     },
     "backend/ai_pipeline/llm.py": {
       "filePath": "backend/ai_pipeline/llm.py",
-      "contentHash": "25a2219c67141662fa7b04e8d6b42c73c01cb7bc7de3e293fab42ced7b02d9a2",
-      "functions": [],
+      "contentHash": "38948f5a4c2bcbaef07a781e7c22dce8b837f1dfc310f63d9db793553bc4a549",
+      "functions": [
+        {
+          "name": "get_telephony_voice_constraint",
+          "params": [
+            "system_prompt",
+            "user_input"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 51
+        },
+        {
+          "name": "evaluate_input_guardrail",
+          "params": [
+            "user_input",
+            "system_prompt"
+          ],
+          "returnType": "Optional[str]",
+          "exported": true,
+          "lineCount": 34
+        },
+        {
+          "name": "clean_voice_output",
+          "params": [
+            "text"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 52
+        }
+      ],
       "classes": [
         {
           "name": "LLMAdapter",
@@ -1670,7 +1710,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 89
+          "lineCount": 92
         },
         {
           "name": "GeminiLLM",
@@ -1705,7 +1745,7 @@
             "_ollama_offline_until"
           ],
           "exported": true,
-          "lineCount": 103
+          "lineCount": 108
         }
       ],
       "imports": [
@@ -1719,6 +1759,12 @@
           "source": "logging",
           "specifiers": [
             "logging"
+          ]
+        },
+        {
+          "source": "re",
+          "specifiers": [
+            "re"
           ]
         },
         {
@@ -1757,6 +1803,9 @@
         }
       ],
       "exports": [
+        "get_telephony_voice_constraint",
+        "evaluate_input_guardrail",
+        "clean_voice_output",
         "LLMAdapter",
         "OllamaLLM",
         "GroqLLM",
@@ -1764,7 +1813,7 @@
         "RuleBasedLLM",
         "FallbackLLM"
       ],
-      "totalLines": 515,
+      "totalLines": 673,
       "hasStructuralAnalysis": true
     },
     "backend/ai_pipeline/pipeline.py": {
@@ -1835,8 +1884,69 @@
     },
     "backend/ai_pipeline/script_writer.py": {
       "filePath": "backend/ai_pipeline/script_writer.py",
-      "contentHash": "d859bf44c4b09797ff58b19d9859cde62df7b0b58f1d725f82d57255b3203b85",
+      "contentHash": "eab3ddccb588fd8b6297b12421dd3333d9ea1c05c6125481b4e9c8808a81d307",
       "functions": [
+        {
+          "name": "_clean_reason",
+          "params": [
+            "reason"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "_build_deterministic_opening",
+          "params": [
+            "reason",
+            "language"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "_build_deterministic_system_prompt",
+          "params": [
+            "reason",
+            "language",
+            "document_text"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "extract_document_text",
+          "params": [
+            "filename",
+            "raw_bytes"
+          ],
+          "returnType": "Optional[str]",
+          "exported": true,
+          "lineCount": 73
+        },
+        {
+          "name": "generate_call_script",
+          "params": [
+            "reason",
+            "language",
+            "document_text"
+          ],
+          "returnType": "Tuple[str, str]",
+          "exported": true,
+          "lineCount": 115
+        },
+        {
+          "name": "_ensure_trai_disclosure",
+          "params": [
+            "opening",
+            "language"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 20
+        },
         {
           "name": "build_opening_message",
           "params": [
@@ -1845,17 +1955,7 @@
           ],
           "returnType": "str",
           "exported": true,
-          "lineCount": 14
-        },
-        {
-          "name": "_fallback_system_prompt",
-          "params": [
-            "reason",
-            "language"
-          ],
-          "returnType": "str",
-          "exported": true,
-          "lineCount": 12
+          "lineCount": 3
         },
         {
           "name": "generate_system_prompt",
@@ -1866,17 +1966,7 @@
           ],
           "returnType": "str",
           "exported": true,
-          "lineCount": 49
-        },
-        {
-          "name": "extract_document_text",
-          "params": [
-            "filename",
-            "raw_bytes"
-          ],
-          "returnType": "Optional[str]",
-          "exported": true,
-          "lineCount": 32
+          "lineCount": 8
         }
       ],
       "classes": [],
@@ -1888,33 +1978,60 @@
           ]
         },
         {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
           "source": "logging",
           "specifiers": [
             "logging"
           ]
         },
         {
-          "source": "typing",
+          "source": "re",
           "specifiers": [
-            "Optional"
+            "re"
           ]
         },
         {
-          "source": "backend.ai_pipeline.llm",
+          "source": "typing",
           "specifiers": [
-            "FallbackLLM",
-            "GroqLLM",
-            "OllamaLLM"
+            "Optional",
+            "Tuple"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "backend.config",
+          "specifiers": [
+            "settings"
           ]
         }
       ],
       "exports": [
+        "_clean_reason",
+        "_build_deterministic_opening",
+        "_build_deterministic_system_prompt",
+        "extract_document_text",
+        "generate_call_script",
+        "_ensure_trai_disclosure",
         "build_opening_message",
-        "_fallback_system_prompt",
-        "generate_system_prompt",
-        "extract_document_text"
+        "generate_system_prompt"
       ],
-      "totalLines": 156,
+      "totalLines": 358,
       "hasStructuralAnalysis": true
     },
     "backend/ai_pipeline/stt.py": {
@@ -2046,7 +2163,7 @@
     },
     "backend/ai_pipeline/tts.py": {
       "filePath": "backend/ai_pipeline/tts.py",
-      "contentHash": "7000f253a85a5bed6d4c20da024a02dc8ae69756ac05f4ec0a2dcc5c4610eff1",
+      "contentHash": "9ed7e23340d3c2caa55a66ea66280eed9455128cfb546f334ceb364ae8dbe9a9",
       "functions": [],
       "classes": [
         {
@@ -2223,6 +2340,365 @@
       "imports": [],
       "exports": [],
       "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "backend/api/academic.py": {
+      "filePath": "backend/api/academic.py",
+      "contentHash": "7c8ce30b8a9066fc59c7f0e454a91c990fb4118eba5306362f7927f6b845222f",
+      "functions": [
+        {
+          "name": "get_academic_tree",
+          "params": [
+            "session",
+            "_"
+          ],
+          "returnType": "AcademicTreeResponse",
+          "exported": true,
+          "lineCount": 98
+        },
+        {
+          "name": "list_institutes",
+          "params": [
+            "session",
+            "_"
+          ],
+          "returnType": "List[InstituteSummary]",
+          "exported": true,
+          "lineCount": 26
+        },
+        {
+          "name": "list_departments",
+          "params": [
+            "institute_id",
+            "session",
+            "_"
+          ],
+          "returnType": "List[DepartmentSummary]",
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "list_programs",
+          "params": [
+            "department_id",
+            "session",
+            "_"
+          ],
+          "returnType": "List[ProgramSummary]",
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "list_batches",
+          "params": [
+            "program_id",
+            "session",
+            "_"
+          ],
+          "returnType": "List[BatchSummary]",
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "list_divisions",
+          "params": [
+            "batch_id",
+            "session",
+            "_"
+          ],
+          "returnType": "List[DivisionSummary]",
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "list_academic_audit_logs",
+          "params": [
+            "page",
+            "limit",
+            "action",
+            "session",
+            "current_user"
+          ],
+          "returnType": "PaginatedAuditLogs",
+          "exported": true,
+          "lineCount": 46
+        }
+      ],
+      "classes": [
+        {
+          "name": "DivisionSummary",
+          "methods": [],
+          "properties": [
+            "id",
+            "batch_id",
+            "code",
+            "name",
+            "current_semester",
+            "is_active"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "BatchSummary",
+          "methods": [],
+          "properties": [
+            "id",
+            "program_id",
+            "admission_year",
+            "graduating_year",
+            "name",
+            "is_current"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "ProgramSummary",
+          "methods": [],
+          "properties": [
+            "id",
+            "department_id",
+            "code",
+            "name",
+            "level",
+            "duration_semesters",
+            "is_active"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "DepartmentSummary",
+          "methods": [],
+          "properties": [
+            "id",
+            "institute_id",
+            "code",
+            "name",
+            "hod_name",
+            "hod_email",
+            "is_active"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "InstituteSummary",
+          "methods": [],
+          "properties": [
+            "id",
+            "code",
+            "name",
+            "contact_email",
+            "is_active"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "BatchTreeNode",
+          "methods": [],
+          "properties": [
+            "id",
+            "program_id",
+            "admission_year",
+            "graduating_year",
+            "name",
+            "is_current",
+            "divisions"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "ProgramTreeNode",
+          "methods": [],
+          "properties": [
+            "id",
+            "department_id",
+            "code",
+            "name",
+            "level",
+            "duration_semesters",
+            "is_active",
+            "batches"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "DepartmentTreeNode",
+          "methods": [],
+          "properties": [
+            "id",
+            "institute_id",
+            "code",
+            "name",
+            "hod_name",
+            "hod_email",
+            "is_active",
+            "programs"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "InstituteTreeNode",
+          "methods": [],
+          "properties": [
+            "id",
+            "code",
+            "name",
+            "contact_email",
+            "is_active",
+            "departments"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "AcademicTreeResponse",
+          "methods": [],
+          "properties": [
+            "institutes"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AcademicAuditLogResponse",
+          "methods": [],
+          "properties": [
+            "id",
+            "action",
+            "staff_id",
+            "staff_email",
+            "staff_role",
+            "institute_code",
+            "department_code",
+            "target_count",
+            "target_filter",
+            "campaign_id",
+            "created_at"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "PaginatedAuditLogs",
+          "methods": [],
+          "properties": [
+            "total",
+            "page",
+            "limit",
+            "items"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "List",
+            "Optional"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "Depends",
+            "Query"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel"
+          ]
+        },
+        {
+          "source": "sqlalchemy",
+          "specifiers": [
+            "func",
+            "or_",
+            "select"
+          ]
+        },
+        {
+          "source": "sqlalchemy.ext.asyncio",
+          "specifiers": [
+            "AsyncSession"
+          ]
+        },
+        {
+          "source": "sqlalchemy.orm",
+          "specifiers": [
+            "selectinload"
+          ]
+        },
+        {
+          "source": "backend.api.auth",
+          "specifiers": [
+            "get_current_user"
+          ]
+        },
+        {
+          "source": "backend.database.models",
+          "specifiers": [
+            "AcademicAuditLog",
+            "AcademicBatch",
+            "AcademicDivision",
+            "AcademicProgram",
+            "Department",
+            "Institute",
+            "StaffUser"
+          ]
+        },
+        {
+          "source": "backend.database.session",
+          "specifiers": [
+            "get_async_session"
+          ]
+        }
+      ],
+      "exports": [
+        "DivisionSummary",
+        "BatchSummary",
+        "ProgramSummary",
+        "DepartmentSummary",
+        "InstituteSummary",
+        "BatchTreeNode",
+        "ProgramTreeNode",
+        "DepartmentTreeNode",
+        "InstituteTreeNode",
+        "AcademicTreeResponse",
+        "get_academic_tree",
+        "list_institutes",
+        "list_departments",
+        "list_programs",
+        "list_batches",
+        "list_divisions",
+        "AcademicAuditLogResponse",
+        "PaginatedAuditLogs",
+        "list_academic_audit_logs"
+      ],
+      "totalLines": 504,
       "hasStructuralAnalysis": true
     },
     "backend/api/analytics.py": {
@@ -2403,7 +2879,7 @@
     },
     "backend/api/auth.py": {
       "filePath": "backend/api/auth.py",
-      "contentHash": "067d412b05f00b56fb1512f7403b4da1a75b1482939d95c22b76b4405d7a6146",
+      "contentHash": "1ee96a78a9dc9cd3b13b89b5ddaa63962da112619c019d1dc5548fab14ae29b5",
       "functions": [
         {
           "name": "verify_password",
@@ -2461,7 +2937,7 @@
           ],
           "returnType": "TokenResponse",
           "exported": true,
-          "lineCount": 31
+          "lineCount": 37
         },
         {
           "name": "refresh_token",
@@ -2471,7 +2947,7 @@
           ],
           "returnType": "TokenResponse",
           "exported": true,
-          "lineCount": 28
+          "lineCount": 34
         },
         {
           "name": "get_me",
@@ -2501,7 +2977,7 @@
           ],
           "returnType": "StaffUser",
           "exported": true,
-          "lineCount": 21
+          "lineCount": 42
         },
         {
           "name": "update_user",
@@ -2513,7 +2989,7 @@
           ],
           "returnType": "StaffUser",
           "exported": true,
-          "lineCount": 21
+          "lineCount": 37
         }
       ],
       "classes": [
@@ -2535,10 +3011,16 @@
             "refresh_token",
             "token_type",
             "role",
-            "name"
+            "name",
+            "institute_code",
+            "institute_id",
+            "department_code",
+            "department_id",
+            "program_id",
+            "division_id"
           ],
           "exported": true,
-          "lineCount": 7
+          "lineCount": 13
         },
         {
           "name": "RefreshRequest",
@@ -2557,11 +3039,17 @@
             "email",
             "name",
             "role",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "division_id",
+            "institute_code",
+            "department_code",
             "is_active",
             "created_at"
           ],
           "exported": true,
-          "lineCount": 8
+          "lineCount": 14
         },
         {
           "name": "UserCreateRequest",
@@ -2570,20 +3058,33 @@
             "name",
             "email",
             "password",
-            "role"
+            "role",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "division_id",
+            "institute_code",
+            "department_code"
           ],
           "exported": true,
-          "lineCount": 6
+          "lineCount": 12
         },
         {
           "name": "UserUpdateRequest",
           "methods": [],
           "properties": [
             "is_active",
-            "password"
+            "password",
+            "role",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "division_id",
+            "institute_code",
+            "department_code"
           ],
           "exported": true,
-          "lineCount": 4
+          "lineCount": 11
         }
       ],
       "imports": [
@@ -2664,6 +3165,8 @@
         {
           "source": "backend.database.models",
           "specifiers": [
+            "Department",
+            "Institute",
             "StaffUser"
           ]
         },
@@ -2693,7 +3196,7 @@
         "create_user",
         "update_user"
       ],
-      "totalLines": 284,
+      "totalLines": 358,
       "hasStructuralAnalysis": true
     },
     "backend/api/calls.py": {
@@ -2936,7 +3439,7 @@
     },
     "backend/api/campaigns.py": {
       "filePath": "backend/api/campaigns.py",
-      "contentHash": "623904c748f80de42c843608c5883fa97110667534f7dd9798566fd4d25c0f21",
+      "contentHash": "d4b557f1e23ee8a7ad0f9ae405c38f8f1c9d0806cce75156724b8eaeedff2b59",
       "functions": [
         {
           "name": "list_campaigns",
@@ -2949,7 +3452,7 @@
           ],
           "returnType": "PaginatedCampaigns",
           "exported": true,
-          "lineCount": 26
+          "lineCount": 45
         },
         {
           "name": "create_campaign",
@@ -2972,7 +3475,7 @@
           ],
           "returnType": "GeneratedScriptResponse",
           "exported": true,
-          "lineCount": 29
+          "lineCount": 28
         },
         {
           "name": "create_script",
@@ -3226,6 +3729,7 @@
           "specifiers": [
             "build_opening_message",
             "extract_document_text",
+            "generate_call_script",
             "generate_system_prompt"
           ]
         },
@@ -3284,13 +3788,40 @@
         "get_campaign",
         "cancel_campaign"
       ],
-      "totalLines": 435,
+      "totalLines": 458,
       "hasStructuralAnalysis": true
     },
     "backend/api/students.py": {
       "filePath": "backend/api/students.py",
-      "contentHash": "84fb6b62c7b15effe60269458e626d113abb8d0e29195c1e4394cd2ddffa0981",
+      "contentHash": "be9ce4179a24e8ff9657ae1621fb756bd21d5e9a60dc41df36293c4feb5d2003",
       "functions": [
+        {
+          "name": "_map_student",
+          "params": [
+            "s"
+          ],
+          "returnType": "StudentSearchResult",
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "normalize_column_name",
+          "params": [
+            "col"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "normalize_phone_number",
+          "params": [
+            "raw_phone"
+          ],
+          "returnType": "Optional[str]",
+          "exported": true,
+          "lineCount": 12
+        },
         {
           "name": "search_students",
           "params": [
@@ -3300,7 +3831,55 @@
           ],
           "returnType": "List[StudentSearchResult]",
           "exported": true,
-          "lineCount": 23
+          "lineCount": 82
+        },
+        {
+          "name": "list_students",
+          "params": [
+            "page",
+            "limit",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "batch_id",
+            "division_id",
+            "semester",
+            "session",
+            "current_user"
+          ],
+          "returnType": "PaginatedStudents",
+          "exported": true,
+          "lineCount": 97
+        },
+        {
+          "name": "download_roster_template",
+          "params": [],
+          "returnType": "Response",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "get_student_by_id",
+          "params": [
+            "student_id",
+            "session",
+            "current_user"
+          ],
+          "returnType": "StudentSearchResult",
+          "exported": true,
+          "lineCount": 96
+        },
+        {
+          "name": "upload_students_csv",
+          "params": [
+            "request",
+            "file",
+            "session",
+            "current_user"
+          ],
+          "returnType": "RosterIngestionResponse",
+          "exported": true,
+          "lineCount": 308
         }
       ],
       "classes": [
@@ -3313,13 +3892,61 @@
             "roll_number",
             "phone",
             "department",
-            "semester"
+            "semester",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "division_id",
+            "institute_code",
+            "department_code",
+            "program_code",
+            "division_code",
+            "lab_batch",
+            "attendance_pct",
+            "pending_fee_inr"
           ],
           "exported": true,
-          "lineCount": 9
+          "lineCount": 20
+        },
+        {
+          "name": "PaginatedStudents",
+          "methods": [],
+          "properties": [
+            "total",
+            "page",
+            "limit",
+            "items"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "RosterIngestionResponse",
+          "methods": [],
+          "properties": [
+            "total_rows",
+            "inserted",
+            "updated",
+            "skipped",
+            "errors"
+          ],
+          "exported": true,
+          "lineCount": 8
         }
       ],
       "imports": [
+        {
+          "source": "csv",
+          "specifiers": [
+            "csv"
+          ]
+        },
+        {
+          "source": "io",
+          "specifiers": [
+            "io"
+          ]
+        },
         {
           "source": "logging",
           "specifiers": [
@@ -3327,8 +3954,16 @@
           ]
         },
         {
+          "source": "re",
+          "specifiers": [
+            "re"
+          ]
+        },
+        {
           "source": "typing",
           "specifiers": [
+            "Any",
+            "Dict",
             "List",
             "Optional"
           ]
@@ -3338,18 +3973,26 @@
           "specifiers": [
             "APIRouter",
             "Depends",
-            "Query"
+            "File",
+            "HTTPException",
+            "Query",
+            "Request",
+            "Response",
+            "UploadFile",
+            "status"
           ]
         },
         {
           "source": "pydantic",
           "specifiers": [
-            "BaseModel"
+            "BaseModel",
+            "Field"
           ]
         },
         {
           "source": "sqlalchemy",
           "specifiers": [
+            "func",
             "or_",
             "select"
           ]
@@ -3361,6 +4004,12 @@
           ]
         },
         {
+          "source": "sqlalchemy.orm",
+          "specifiers": [
+            "selectinload"
+          ]
+        },
+        {
           "source": "backend.api.auth",
           "specifiers": [
             "get_current_user"
@@ -3369,6 +4018,12 @@
         {
           "source": "backend.database.models",
           "specifiers": [
+            "AcademicAuditLog",
+            "AcademicBatch",
+            "AcademicDivision",
+            "AcademicProgram",
+            "Department",
+            "Institute",
             "StaffUser",
             "Student"
           ]
@@ -3376,20 +4031,36 @@
         {
           "source": "backend.database.session",
           "specifiers": [
-            "get_async_session"
+            "get_async_session",
+            "set_rls_session_context"
+          ]
+        },
+        {
+          "source": "backend.utils.roll_parser",
+          "specifiers": [
+            "parse_nirma_roll"
           ]
         }
       ],
       "exports": [
         "StudentSearchResult",
-        "search_students"
+        "PaginatedStudents",
+        "RosterIngestionResponse",
+        "_map_student",
+        "normalize_column_name",
+        "normalize_phone_number",
+        "search_students",
+        "list_students",
+        "download_roster_template",
+        "get_student_by_id",
+        "upload_students_csv"
       ],
-      "totalLines": 68,
+      "totalLines": 760,
       "hasStructuralAnalysis": true
     },
     "backend/config.py": {
       "filePath": "backend/config.py",
-      "contentHash": "4b0109f80b2efed23bc7fc3f2cb4a42719091f3804a5d7c95ab97a19fd8fbb33",
+      "contentHash": "c04ebe5843d54e11d09b3c72ec7394fc70b6fe10858572f5ef1a58999f818ce0",
       "functions": [],
       "classes": [
         {
@@ -3708,9 +4379,153 @@
       "totalLines": 118,
       "hasStructuralAnalysis": true
     },
+    "backend/database/migrations/versions/003_academic_hierarchy.py": {
+      "filePath": "backend/database/migrations/versions/003_academic_hierarchy.py",
+      "contentHash": "e86048ebe9d5c09dfe99dd949ac6209cbdaaf5b702459c823dfbd109ebb889da",
+      "functions": [
+        {
+          "name": "upgrade",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 126
+        },
+        {
+          "name": "downgrade",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 33
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "typing",
+          "specifiers": [
+            "Sequence",
+            "Union"
+          ]
+        },
+        {
+          "source": "alembic",
+          "specifiers": [
+            "op"
+          ]
+        },
+        {
+          "source": "sqlalchemy",
+          "specifiers": [
+            "sa"
+          ]
+        }
+      ],
+      "exports": [
+        "upgrade",
+        "downgrade"
+      ],
+      "totalLines": 181,
+      "hasStructuralAnalysis": true
+    },
+    "backend/database/migrations/versions/004_academic_extensions_and_rls.py": {
+      "filePath": "backend/database/migrations/versions/004_academic_extensions_and_rls.py",
+      "contentHash": "215393395a7c119766409392175f818ea1ff930702966dbccda3736a515a88fa",
+      "functions": [
+        {
+          "name": "upgrade",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 69
+        },
+        {
+          "name": "downgrade",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 13
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "typing",
+          "specifiers": [
+            "Sequence",
+            "Union"
+          ]
+        },
+        {
+          "source": "alembic",
+          "specifiers": [
+            "op"
+          ]
+        },
+        {
+          "source": "sqlalchemy",
+          "specifiers": [
+            "sa"
+          ]
+        }
+      ],
+      "exports": [
+        "upgrade",
+        "downgrade"
+      ],
+      "totalLines": 104,
+      "hasStructuralAnalysis": true
+    },
+    "backend/database/migrations/versions/005_prog_coord_rls.py": {
+      "filePath": "backend/database/migrations/versions/005_prog_coord_rls.py",
+      "contentHash": "5e39acc9281811f08b7b46beac1a26501b638a0c0ad192ee197f863d008f50bf",
+      "functions": [
+        {
+          "name": "upgrade",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 49
+        },
+        {
+          "name": "downgrade",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 33
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "typing",
+          "specifiers": [
+            "Sequence",
+            "Union"
+          ]
+        },
+        {
+          "source": "alembic",
+          "specifiers": [
+            "op"
+          ]
+        },
+        {
+          "source": "sqlalchemy",
+          "specifiers": [
+            "sa"
+          ]
+        }
+      ],
+      "exports": [
+        "upgrade",
+        "downgrade"
+      ],
+      "totalLines": 104,
+      "hasStructuralAnalysis": true
+    },
     "backend/database/models.py": {
       "filePath": "backend/database/models.py",
-      "contentHash": "6cdf00db45510e7dc9af9c399097772de911f8bbb99c129999524a48c33e86d9",
+      "contentHash": "f377c18757b659079c6a1e0336c7f52b4768284ba58951f3d60c83f8fa3e994a",
       "functions": [
         {
           "name": "utc_now",
@@ -3729,6 +4544,113 @@
           "lineCount": 3
         },
         {
+          "name": "Institution",
+          "methods": [],
+          "properties": [
+            "id",
+            "code",
+            "name",
+            "domain",
+            "is_active",
+            "created_at",
+            "institutes"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "Institute",
+          "methods": [],
+          "properties": [
+            "id",
+            "institution_id",
+            "code",
+            "name",
+            "director_name",
+            "contact_email",
+            "is_active",
+            "created_at",
+            "institution",
+            "departments",
+            "students"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "Department",
+          "methods": [],
+          "properties": [
+            "id",
+            "institute_id",
+            "code",
+            "name",
+            "hod_name",
+            "hod_email",
+            "is_active",
+            "created_at",
+            "institute",
+            "programs",
+            "students"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "AcademicProgram",
+          "methods": [],
+          "properties": [
+            "id",
+            "department_id",
+            "code",
+            "name",
+            "level",
+            "duration_semesters",
+            "is_active",
+            "created_at",
+            "department",
+            "batches",
+            "students"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "AcademicBatch",
+          "methods": [],
+          "properties": [
+            "id",
+            "program_id",
+            "admission_year",
+            "graduating_year",
+            "name",
+            "is_current",
+            "created_at",
+            "program",
+            "divisions",
+            "students"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "AcademicDivision",
+          "methods": [],
+          "properties": [
+            "id",
+            "batch_id",
+            "code",
+            "name",
+            "current_semester",
+            "is_active",
+            "created_at",
+            "batch",
+            "students"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
           "name": "StaffUser",
           "methods": [
             "__repr__"
@@ -3739,13 +4661,19 @@
             "name",
             "role",
             "password_hash",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "division_id",
+            "institute_code",
+            "department_code",
             "is_active",
             "created_at",
             "created_scripts",
             "created_campaigns"
           ],
           "exported": true,
-          "lineCount": 36
+          "lineCount": 46
         },
         {
           "name": "Student",
@@ -3761,14 +4689,28 @@
             "language_pref",
             "department",
             "semester",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "batch_id",
+            "division_id",
+            "mentor_id",
+            "lab_batch",
+            "pending_fee_inr",
+            "attendance_pct",
             "whatsapp_number",
             "is_active",
             "created_at",
             "updated_at",
-            "call_tasks"
+            "call_tasks",
+            "institute_rel",
+            "department_rel",
+            "program_rel",
+            "batch_rel",
+            "division_rel"
           ],
           "exported": true,
-          "lineCount": 48
+          "lineCount": 74
         },
         {
           "name": "CallScript",
@@ -3863,6 +4805,30 @@
           ],
           "exported": true,
           "lineCount": 47
+        },
+        {
+          "name": "AcademicAuditLog",
+          "methods": [
+            "__repr__"
+          ],
+          "properties": [
+            "id",
+            "action",
+            "staff_id",
+            "staff_email",
+            "staff_role",
+            "institute_code",
+            "department_code",
+            "target_count",
+            "target_filter",
+            "campaign_id",
+            "ip_address",
+            "created_at",
+            "staff",
+            "campaign"
+          ],
+          "exported": true,
+          "lineCount": 47
         }
       ],
       "imports": [
@@ -3890,6 +4856,8 @@
             "ForeignKey",
             "Index",
             "Integer",
+            "JSON",
+            "Numeric",
             "String",
             "Text",
             "text"
@@ -3914,14 +4882,21 @@
       "exports": [
         "utc_now",
         "Base",
+        "Institution",
+        "Institute",
+        "Department",
+        "AcademicProgram",
+        "AcademicBatch",
+        "AcademicDivision",
         "StaffUser",
         "Student",
         "CallScript",
         "CallCampaign",
         "CallTask",
-        "CallLog"
+        "CallLog",
+        "AcademicAuditLog"
       ],
-      "totalLines": 363,
+      "totalLines": 573,
       "hasStructuralAnalysis": true
     },
     "backend/database/redis_client.py": {
@@ -4002,7 +4977,7 @@
     },
     "backend/database/session.py": {
       "filePath": "backend/database/session.py",
-      "contentHash": "e00884e695636c025ace2adfe52ea1f4e9a51ed8895b8d55969e79712e815d26",
+      "contentHash": "91767f8c77682e0891d4e14e5de8ade5a7e2a64765e06f3bc44d52f2982514fb",
       "functions": [
         {
           "name": "get_async_session",
@@ -4017,6 +4992,21 @@
           "returnType": "AsyncGenerator[AsyncSession, None]",
           "exported": true,
           "lineCount": 16
+        },
+        {
+          "name": "set_rls_session_context",
+          "params": [
+            "session",
+            "role",
+            "user_id",
+            "institute_id",
+            "department_id",
+            "program_id",
+            "division_id"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 28
         },
         {
           "name": "get_sync_session",
@@ -4080,14 +5070,15 @@
       "exports": [
         "get_async_session",
         "async_session_scope",
+        "set_rls_session_context",
         "get_sync_session"
       ],
-      "totalLines": 139,
+      "totalLines": 169,
       "hasStructuralAnalysis": true
     },
     "backend/main.py": {
       "filePath": "backend/main.py",
-      "contentHash": "c7a2c9d11482fa01ba4fa798790cb4a7579d702d3c926c605aa3a77fc3cd7c3e",
+      "contentHash": "a08422d7dbd5accb62907a3f54e6305aede6b62883b3efe9ff50ed36d205c702",
       "functions": [
         {
           "name": "_active_call_watchdog",
@@ -4103,7 +5094,7 @@
           ],
           "returnType": "AsyncGenerator[None, None]",
           "exported": true,
-          "lineCount": 43
+          "lineCount": 57
         },
         {
           "name": "health_check",
@@ -4218,6 +5209,12 @@
           ]
         },
         {
+          "source": "backend.api.academic",
+          "specifiers": [
+            "academic_router"
+          ]
+        },
+        {
           "source": "backend.api.analytics",
           "specifiers": [
             "analytics_router"
@@ -4280,7 +5277,7 @@
         "SystemStatusResponse",
         "get_system_status"
       ],
-      "totalLines": 365,
+      "totalLines": 381,
       "hasStructuralAnalysis": true
     },
     "backend/requirements.txt": {
@@ -4337,7 +5334,7 @@
     },
     "backend/scheduler/campaign_runner.py": {
       "filePath": "backend/scheduler/campaign_runner.py",
-      "contentHash": "73efa5de06abb7ae67ff5b960c280243f6f62b58ae1506f61abc488580c4cc70",
+      "contentHash": "59d25287e07546b5fbcfe645678f529fa24cad76459a8a5b6759c5b9e8fb27e2",
       "functions": [],
       "classes": [
         {
@@ -4347,7 +5344,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 75
+          "lineCount": 147
         }
       ],
       "imports": [
@@ -4366,6 +5363,12 @@
           ]
         },
         {
+          "source": "sqlalchemy",
+          "specifiers": [
+            "or_"
+          ]
+        },
+        {
           "source": "sqlalchemy.orm",
           "specifiers": [
             "Session"
@@ -4374,8 +5377,10 @@
         {
           "source": "backend.database.models",
           "specifiers": [
+            "AcademicAuditLog",
             "CallCampaign",
             "CallTask",
+            "StaffUser",
             "Student"
           ]
         }
@@ -4383,7 +5388,7 @@
       "exports": [
         "CampaignRunner"
       ],
-      "totalLines": 96,
+      "totalLines": 169,
       "hasStructuralAnalysis": true
     },
     "backend/scheduler/celery_app.py": {
@@ -4553,7 +5558,7 @@
     },
     "backend/seeds.py": {
       "filePath": "backend/seeds.py",
-      "contentHash": "de5be648953d30d9df039e501d8d41dcd7873e1cd03f98d7822d602fd3615ba7",
+      "contentHash": "0880e73cfff72c95ccf6e05de0654a7f141b28d902b3b9f666a59ab055bf975c",
       "functions": [
         {
           "name": "seed_data",
@@ -4562,7 +5567,17 @@
           ],
           "returnType": "None",
           "exported": true,
-          "lineCount": 48
+          "lineCount": 51
+        },
+        {
+          "name": "seed_academic_hierarchy",
+          "params": [
+            "session",
+            "admin_id"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 425
         },
         {
           "name": "main",
@@ -4615,7 +5630,14 @@
           "specifiers": [
             "Base",
             "CallScript",
-            "StaffUser"
+            "StaffUser",
+            "Institution",
+            "Institute",
+            "Department",
+            "AcademicProgram",
+            "AcademicBatch",
+            "AcademicDivision",
+            "Student"
           ]
         },
         {
@@ -4628,9 +5650,10 @@
       ],
       "exports": [
         "seed_data",
+        "seed_academic_hierarchy",
         "main"
       ],
-      "totalLines": 202,
+      "totalLines": 643,
       "hasStructuralAnalysis": true
     },
     "backend/telephony/.gitkeep": {
@@ -4958,19 +5981,20 @@
     },
     "backend/telephony/webhook_handler.py": {
       "filePath": "backend/telephony/webhook_handler.py",
-      "contentHash": "e2c4f20f31a3b0dfed2b5c0c1bb15bca756f43a542bdd496ea7a994f051dcf0b",
+      "contentHash": "b46dc5c536bb5e555db367aaa2a4104c5af9b4d55219c8309191d08b2f0752c0",
       "functions": [
         {
           "name": "_build_plivo_xml_response",
           "params": [
             "audio_url",
             "action_url",
+            "redirect_url",
             "hangup",
             "silence_seconds"
           ],
           "returnType": "str",
           "exported": true,
-          "lineCount": 40
+          "lineCount": 45
         },
         {
           "name": "_build_twilio_xml_response",
@@ -4978,13 +6002,14 @@
             "audio_url",
             "say_text",
             "action_url",
+            "redirect_url",
             "hangup",
             "silence_seconds",
             "language"
           ],
           "returnType": "str",
           "exported": true,
-          "lineCount": 56
+          "lineCount": 60
         },
         {
           "name": "_build_carrier_xml",
@@ -4993,13 +6018,14 @@
             "audio_url",
             "say_text",
             "action_url",
+            "redirect_url",
             "hangup",
             "silence_seconds",
             "language"
           ],
           "returnType": "str",
           "exported": true,
-          "lineCount": 25
+          "lineCount": 28
         },
         {
           "name": "_execute_call_answer",
@@ -5012,7 +6038,7 @@
           ],
           "returnType": "Response",
           "exported": true,
-          "lineCount": 159
+          "lineCount": 162
         },
         {
           "name": "_execute_call_input",
@@ -5025,7 +6051,19 @@
           ],
           "returnType": "Response",
           "exported": true,
-          "lineCount": 211
+          "lineCount": 313
+        },
+        {
+          "name": "_execute_call_continue",
+          "params": [
+            "task_id",
+            "call_uuid",
+            "turn",
+            "carrier"
+          ],
+          "returnType": "Response",
+          "exported": true,
+          "lineCount": 147
         },
         {
           "name": "_execute_call_hangup",
@@ -5038,7 +6076,7 @@
           ],
           "returnType": "Response",
           "exported": true,
-          "lineCount": 113
+          "lineCount": 112
         },
         {
           "name": "handle_plivo_answer",
@@ -5059,6 +6097,18 @@
           "returnType": "Response",
           "exported": true,
           "lineCount": 22
+        },
+        {
+          "name": "handle_plivo_continue",
+          "params": [
+            "request",
+            "task_id",
+            "call_uuid",
+            "turn"
+          ],
+          "returnType": "Response",
+          "exported": true,
+          "lineCount": 21
         },
         {
           "name": "handle_plivo_hangup",
@@ -5096,6 +6146,18 @@
           "returnType": "Response",
           "exported": true,
           "lineCount": 33
+        },
+        {
+          "name": "handle_twilio_continue",
+          "params": [
+            "request",
+            "task_id",
+            "call_uuid",
+            "turn"
+          ],
+          "returnType": "Response",
+          "exported": true,
+          "lineCount": 21
         },
         {
           "name": "handle_twilio_hangup",
@@ -5223,17 +6285,182 @@
         "_build_carrier_xml",
         "_execute_call_answer",
         "_execute_call_input",
+        "_execute_call_continue",
         "_execute_call_hangup",
         "handle_plivo_answer",
         "handle_plivo_input",
+        "handle_plivo_continue",
         "handle_plivo_hangup",
         "handle_plivo_fallback",
         "handle_twilio_answer",
         "handle_twilio_input",
+        "handle_twilio_continue",
         "handle_twilio_hangup",
         "handle_twilio_fallback"
       ],
-      "totalLines": 876,
+      "totalLines": 1216,
+      "hasStructuralAnalysis": true
+    },
+    "backend/tests/api/test_api_academic.py": {
+      "filePath": "backend/tests/api/test_api_academic.py",
+      "contentHash": "44d1fe4d3de0b35261121cb2174333874da60d53a0400e7f478ff9e74c96935e",
+      "functions": [
+        {
+          "name": "seed_academic_tree",
+          "params": [
+            "db_session"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "test_get_academic_tree",
+          "params": [
+            "async_client",
+            "admin_headers",
+            "seed_academic_tree"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "test_get_academic_institutes_and_departments",
+          "params": [
+            "async_client",
+            "admin_headers",
+            "seed_academic_tree"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "test_student_search_scoping",
+          "params": [
+            "async_client",
+            "admin_headers",
+            "operator_headers",
+            "seed_users",
+            "seed_students",
+            "seed_academic_tree",
+            "db_session"
+          ],
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "test_roster_template_download",
+          "params": [
+            "async_client",
+            "admin_headers"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "test_roster_upload_admin_success",
+          "params": [
+            "async_client",
+            "admin_headers",
+            "seed_academic_tree",
+            "db_session"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "test_roster_upload_operator_abac_enforcement",
+          "params": [
+            "async_client",
+            "operator_headers",
+            "seed_users",
+            "seed_academic_tree",
+            "db_session"
+          ],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "test_academic_audit_logs_endpoint",
+          "params": [
+            "async_client",
+            "admin_headers"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "test_batches_and_divisions_endpoints",
+          "params": [
+            "async_client",
+            "admin_headers",
+            "seed_academic_tree"
+          ],
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "test_student_directory_and_get_by_id_abac",
+          "params": [
+            "async_client",
+            "admin_headers",
+            "operator_headers",
+            "seed_users",
+            "seed_students",
+            "seed_academic_tree",
+            "db_session"
+          ],
+          "exported": true,
+          "lineCount": 47
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "AsyncClient"
+          ]
+        },
+        {
+          "source": "sqlalchemy.ext.asyncio",
+          "specifiers": [
+            "AsyncSession"
+          ]
+        },
+        {
+          "source": "backend.database.models",
+          "specifiers": [
+            "AcademicBatch",
+            "AcademicDivision",
+            "AcademicProgram",
+            "Department",
+            "Institute",
+            "Institution",
+            "StaffUser",
+            "Student"
+          ]
+        }
+      ],
+      "exports": [
+        "seed_academic_tree",
+        "test_get_academic_tree",
+        "test_get_academic_institutes_and_departments",
+        "test_student_search_scoping",
+        "test_roster_template_download",
+        "test_roster_upload_admin_success",
+        "test_roster_upload_operator_abac_enforcement",
+        "test_academic_audit_logs_endpoint",
+        "test_batches_and_divisions_endpoints",
+        "test_student_directory_and_get_by_id_abac"
+      ],
+      "totalLines": 316,
       "hasStructuralAnalysis": true
     },
     "backend/tests/api/test_api_analytics.py": {
@@ -5904,7 +7131,7 @@
     },
     "backend/tests/api/test_api_twilio_webhooks.py": {
       "filePath": "backend/tests/api/test_api_twilio_webhooks.py",
-      "contentHash": "f614827d3a49c3ad64f94d8d043d199ead101afff0834491502cc46a67d1dc0e",
+      "contentHash": "5f678012ecc539e5db4d41d4674c568eb1bac031d2751f65db6052b85666561c",
       "functions": [
         {
           "name": "test_twilio_answer_nonexistent_task",
@@ -5959,6 +7186,46 @@
           ],
           "exported": true,
           "lineCount": 5
+        },
+        {
+          "name": "test_twilio_silence_escalation_ladder",
+          "params": [
+            "async_client",
+            "db_session",
+            "seed_students"
+          ],
+          "exported": true,
+          "lineCount": 69
+        },
+        {
+          "name": "test_twilio_silence_reset_when_user_speaks",
+          "params": [
+            "async_client",
+            "db_session",
+            "seed_students"
+          ],
+          "exported": true,
+          "lineCount": 58
+        },
+        {
+          "name": "test_twilio_slow_llm_triggers_filler_and_redirect_flow",
+          "params": [
+            "async_client",
+            "db_session",
+            "seed_students"
+          ],
+          "exported": true,
+          "lineCount": 69
+        },
+        {
+          "name": "test_twilio_multilingual_filler_gujarati",
+          "params": [
+            "async_client",
+            "db_session",
+            "seed_students"
+          ],
+          "exported": true,
+          "lineCount": 56
         }
       ],
       "classes": [],
@@ -6011,9 +7278,13 @@
         "test_twilio_input_missing_recording_url",
         "test_twilio_input_successful_dialogue_turn",
         "test_twilio_hangup_completes_call_task",
-        "test_twilio_fallback"
+        "test_twilio_fallback",
+        "test_twilio_silence_escalation_ladder",
+        "test_twilio_silence_reset_when_user_speaks",
+        "test_twilio_slow_llm_triggers_filler_and_redirect_flow",
+        "test_twilio_multilingual_filler_gujarati"
       ],
-      "totalLines": 227,
+      "totalLines": 491,
       "hasStructuralAnalysis": true
     },
     "backend/tests/api/test_api_webhooks.py": {
@@ -6350,7 +7621,7 @@
     },
     "backend/tests/conftest.py": {
       "filePath": "backend/tests/conftest.py",
-      "contentHash": "cd19e5269333e9ebfd24e3f352dcf13948b99d5480fcad023c15fe6bd6087d56",
+      "contentHash": "0e85eec61a400b155a47202e1ca75b8df1892bd3406320eb26e4a57fd595c341",
       "functions": [
         {
           "name": "test_db_path",
@@ -6528,7 +7799,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 70
+          "lineCount": 82
         },
         {
           "name": "MockRedisManager",
@@ -6689,12 +7960,12 @@
         "seed_script",
         "async_client"
       ],
-      "totalLines": 537,
+      "totalLines": 549,
       "hasStructuralAnalysis": true
     },
     "backend/tests/integration/test_campaign_runner.py": {
       "filePath": "backend/tests/integration/test_campaign_runner.py",
-      "contentHash": "e4d8531a42d6a5b824f458b3aa735ec4dd3131d6600ff251ea4b5fee48921c5b",
+      "contentHash": "cba22192bd28845af1d09feb06f647d2792fe3fcc3e02fc260ee7bebab378c38",
       "functions": [
         {
           "name": "test_campaign_runner_department_and_active_filtering",
@@ -6727,6 +7998,14 @@
           ],
           "exported": true,
           "lineCount": 4
+        },
+        {
+          "name": "test_campaign_runner_creator_department_scoping",
+          "params": [
+            "sync_db_session"
+          ],
+          "exported": true,
+          "lineCount": 68
         }
       ],
       "classes": [],
@@ -6764,9 +8043,10 @@
         "test_campaign_runner_department_and_active_filtering",
         "test_campaign_runner_idempotency_no_duplicate_tasks",
         "test_campaign_runner_zero_matches_sets_status_completed",
-        "test_campaign_runner_invalid_campaign_returns_zero"
+        "test_campaign_runner_invalid_campaign_returns_zero",
+        "test_campaign_runner_creator_department_scoping"
       ],
-      "totalLines": 136,
+      "totalLines": 207,
       "hasStructuralAnalysis": true
     },
     "backend/tests/integration/test_db_session.py": {
@@ -7201,7 +8481,7 @@
     },
     "backend/tests/unit/test_ai_adapters.py": {
       "filePath": "backend/tests/unit/test_ai_adapters.py",
-      "contentHash": "344ae5b59794cc949833d5a805b39dc35ac4ab0bcbb8e9d62e8d8066ce54b08c",
+      "contentHash": "b0650f6c01763d02f4fcd874a90079ed557cfd147606e8b9044c684e468f5ab1",
       "functions": [
         {
           "name": "test_sarvam_stt_language_code_mapping",
@@ -7323,7 +8603,43 @@
             "tmp_path"
           ],
           "exported": true,
-          "lineCount": 45
+          "lineCount": 46
+        },
+        {
+          "name": "test_clean_voice_output_sanitizes_markdown_and_bullets",
+          "params": [],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_clean_voice_output_phonetic_currency_and_symbols",
+          "params": [],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_clean_voice_output_length_budget_clamping",
+          "params": [],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "test_evaluate_input_guardrail_intercepts_jailbreak",
+          "params": [],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "test_evaluate_input_guardrail_multilingual_deflection",
+          "params": [],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "test_fallback_llm_with_guardrail_deflection",
+          "params": [],
+          "exported": true,
+          "lineCount": 10
         }
       ],
       "classes": [
@@ -7450,7 +8766,9 @@
             "GeminiLLM",
             "GroqLLM",
             "LLMAdapter",
-            "OllamaLLM"
+            "OllamaLLM",
+            "clean_voice_output",
+            "evaluate_input_guardrail"
           ]
         },
         {
@@ -7513,14 +8831,20 @@
         "test_gemini_llm_successful_generation",
         "test_rule_based_llm_deterministic_reply",
         "test_gemini_tts_missing_api_key_raises_value_error",
-        "test_gemini_tts_synthesizes_audio_and_writes_wav"
+        "test_gemini_tts_synthesizes_audio_and_writes_wav",
+        "test_clean_voice_output_sanitizes_markdown_and_bullets",
+        "test_clean_voice_output_phonetic_currency_and_symbols",
+        "test_clean_voice_output_length_budget_clamping",
+        "test_evaluate_input_guardrail_intercepts_jailbreak",
+        "test_evaluate_input_guardrail_multilingual_deflection",
+        "test_fallback_llm_with_guardrail_deflection"
       ],
-      "totalLines": 437,
+      "totalLines": 522,
       "hasStructuralAnalysis": true
     },
     "backend/tests/unit/test_config.py": {
       "filePath": "backend/tests/unit/test_config.py",
-      "contentHash": "4451d1a91f989761afa30805afa13ad5ad8cffc569ed2b31662fbb9effcc96f1",
+      "contentHash": "1b5fa52728aa61e1040d74268ab5545d769a0dc8ed7eac224c73b3b5ba52a52f",
       "functions": [
         {
           "name": "test_default_settings_instantiation",
@@ -7699,6 +9023,59 @@
         "test_database_model_persistence_and_relationships"
       ],
       "totalLines": 182,
+      "hasStructuralAnalysis": true
+    },
+    "backend/tests/unit/test_roll_parser.py": {
+      "filePath": "backend/tests/unit/test_roll_parser.py",
+      "contentHash": "49de9e03b849da0b1f0f0e41df118542945f7d2ac26d1d6e03191111d66704e1",
+      "functions": [
+        {
+          "name": "test_valid_btech_cse_roll",
+          "params": [],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "test_valid_mba_roll_case_insensitive",
+          "params": [],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "test_valid_pharmacy_and_law",
+          "params": [],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_invalid_length_and_symbols",
+          "params": [],
+          "exported": true,
+          "lineCount": 12
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "backend.utils.roll_parser",
+          "specifiers": [
+            "parse_nirma_roll"
+          ]
+        }
+      ],
+      "exports": [
+        "test_valid_btech_cse_roll",
+        "test_valid_mba_roll_case_insensitive",
+        "test_valid_pharmacy_and_law",
+        "test_invalid_length_and_symbols"
+      ],
+      "totalLines": 65,
       "hasStructuralAnalysis": true
     },
     "backend/tests/unit/test_scheduler_tasks.py": {
@@ -8378,7 +9755,7 @@
     },
     "backend/tests/workflows/test_e2e_call_lifecycle.py": {
       "filePath": "backend/tests/workflows/test_e2e_call_lifecycle.py",
-      "contentHash": "48b0db332325f5b1d2db7e19d64d68f075a4060bd8a1ed5bbb44f70c83cf214d",
+      "contentHash": "d6105d59f7dfbb7f39a8400a11be680e0e888d43aff8ac48c9cd6c6f5f20eb93",
       "functions": [
         {
           "name": "test_full_call_lifecycle_from_campaign_to_transcript",
@@ -8389,7 +9766,7 @@
             "sync_db_session"
           ],
           "exported": true,
-          "lineCount": 199
+          "lineCount": 203
         }
       ],
       "classes": [],
@@ -8471,7 +9848,56 @@
       "exports": [
         "test_full_call_lifecycle_from_campaign_to_transcript"
       ],
-      "totalLines": 229,
+      "totalLines": 233,
+      "hasStructuralAnalysis": true
+    },
+    "backend/utils/roll_parser.py": {
+      "filePath": "backend/utils/roll_parser.py",
+      "contentHash": "49b0087e995b1bc07992ffa8ab420a8b11d9bc6704d1f1fc3ab4a64946bfdded",
+      "functions": [
+        {
+          "name": "parse_nirma_roll",
+          "params": [
+            "roll_number"
+          ],
+          "returnType": "RollParseResult",
+          "exported": true,
+          "lineCount": 50
+        }
+      ],
+      "classes": [
+        {
+          "name": "RollParseResult",
+          "methods": [
+            "__init__",
+            "to_dict"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 44
+        }
+      ],
+      "imports": [
+        {
+          "source": "re",
+          "specifiers": [
+            "re"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any",
+            "Dict",
+            "Optional"
+          ]
+        }
+      ],
+      "exports": [
+        "RollParseResult",
+        "parse_nirma_roll"
+      ],
+      "totalLines": 175,
       "hasStructuralAnalysis": true
     },
     "backend/websocket/.gitkeep": {
@@ -8622,6 +10048,26 @@
       "totalLines": 119,
       "hasStructuralAnalysis": false
     },
+    "docs/ENTERPRISE_HIGHER_ED_VOICE_AI_BLUEPRINT.md": {
+      "filePath": "docs/ENTERPRISE_HIGHER_ED_VOICE_AI_BLUEPRINT.md",
+      "contentHash": "4d63892c4b2b0e9b58acae6ebb3ee279f4bdd191c052c9b8d5878ae3cc4016de",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 252,
+      "hasStructuralAnalysis": false
+    },
+    "docs/NIRMA_UNIVERSITY_ACADEMIC_HIERARCHY.md": {
+      "filePath": "docs/NIRMA_UNIVERSITY_ACADEMIC_HIERARCHY.md",
+      "contentHash": "c2a9f775f1f991d0c66ee94381e6b4c595e9c167d9f770a45ff1f57d38f2177a",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 363,
+      "hasStructuralAnalysis": false
+    },
     "docs/SESSION_NOTES.md": {
       "filePath": "docs/SESSION_NOTES.md",
       "contentHash": "aa68fcac47dc66ae378f4fcd240ddc66337a66efba76d8dac5a74b3e9fc0e83e",
@@ -8640,6 +10086,36 @@
       "imports": [],
       "exports": [],
       "totalLines": 393,
+      "hasStructuralAnalysis": false
+    },
+    "docs/TELEPHONY_LATENCY_AND_SILENCE_HANDLING_SPEC.md": {
+      "filePath": "docs/TELEPHONY_LATENCY_AND_SILENCE_HANDLING_SPEC.md",
+      "contentHash": "11d07b78d02a69133e2f869a9cc04dd14b885c22b33155e1cdc8d3fad2925e16",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 194,
+      "hasStructuralAnalysis": false
+    },
+    "docs/TODO.md": {
+      "filePath": "docs/TODO.md",
+      "contentHash": "b20fca834db63e610607a118b063d9df2d67ddb5beae3b5656b5b4230d366847",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 12,
+      "hasStructuralAnalysis": false
+    },
+    "docs/VOICE_AI_SYSTEM_PROMPTS_AND_BOUNDARIES_SPEC.md": {
+      "filePath": "docs/VOICE_AI_SYSTEM_PROMPTS_AND_BOUNDARIES_SPEC.md",
+      "contentHash": "d6c017e63f5c129a2e91eb0d95d591ecfdc1c59a8246ff6437a972456f11967d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 161,
       "hasStructuralAnalysis": false
     },
     "frontend/.oxlintrc.json": {
@@ -8664,7 +10140,7 @@
     },
     "frontend/index.html": {
       "filePath": "frontend/index.html",
-      "contentHash": "53374cd5804e2620a5918f9d389f27dcd58f834785aa26d93db173bec3eec17f",
+      "contentHash": "f4034d6f104067a46a542a3d041a22838bc51c973b7e407d8c8698f52d9d8a29",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -8694,7 +10170,7 @@
     },
     "frontend/src/App.tsx": {
       "filePath": "frontend/src/App.tsx",
-      "contentHash": "0ece6fcd4e3bdc6886d052c0d2ab37a1c19fb1532c62988ec49ee1a933358330",
+      "contentHash": "d4752d8584befc5ebb941675268d750a0e5252b3ec4fbf2f3df0733e808b6e2c",
       "functions": [
         {
           "name": "ViewFallback",
@@ -8706,7 +10182,7 @@
           "name": "AuthenticatedApp",
           "params": [],
           "exported": false,
-          "lineCount": 301
+          "lineCount": 316
         },
         {
           "name": "App",
@@ -8792,12 +10268,12 @@
       "exports": [
         "App"
       ],
-      "totalLines": 339,
+      "totalLines": 354,
       "hasStructuralAnalysis": true
     },
     "frontend/src/components/ConversationalTranscript.tsx": {
       "filePath": "frontend/src/components/ConversationalTranscript.tsx",
-      "contentHash": "4d6dea6119ed83fd9c6c52ebd2ccf0add7605e62c2298113d10f22340956351f",
+      "contentHash": "8753eeaf0d6abd63972fcfd782597ba162cf4b01a225aa94eb0eabf0bff63aa1",
       "functions": [],
       "classes": [],
       "imports": [
@@ -9109,13 +10585,13 @@
     },
     "frontend/src/components/LoginView.tsx": {
       "filePath": "frontend/src/components/LoginView.tsx",
-      "contentHash": "982921f04518f743709be34adb201ec23f280d741d6d5ce59e77f693ff1114c9",
+      "contentHash": "8f649e9029e97495b35687b67674d4501cdd12c61ce0bfb9d810fb276108e209",
       "functions": [
         {
           "name": "LoginView",
           "params": [],
           "exported": true,
-          "lineCount": 100
+          "lineCount": 136
         }
       ],
       "classes": [],
@@ -9132,7 +10608,8 @@
           "specifiers": [
             "PhoneCall",
             "ShieldCheck",
-            "Loader2"
+            "Loader2",
+            "KeyRound"
           ]
         },
         {
@@ -9173,12 +10650,12 @@
       "exports": [
         "LoginView"
       ],
-      "totalLines": 112,
+      "totalLines": 148,
       "hasStructuralAnalysis": true
     },
     "frontend/src/components/NewCallView.tsx": {
       "filePath": "frontend/src/components/NewCallView.tsx",
-      "contentHash": "311fd43bc91e34c65200119eb2102e55be603aff4ee638af2951963d0ed17f9a",
+      "contentHash": "f9cf827a668ce6e0b0d4275db6f4d404621d793d1979294b35849c5d753fd099",
       "functions": [
         {
           "name": "initialsOf",
@@ -9194,7 +10671,7 @@
             "{ onCallLaunched, onNavigateToTelemetry, systemStatus }"
           ],
           "exported": true,
-          "lineCount": 514
+          "lineCount": 834
         }
       ],
       "classes": [],
@@ -9206,7 +10683,8 @@
             "useState",
             "useEffect",
             "useRef",
-            "useCallback"
+            "useCallback",
+            "useMemo"
           ]
         },
         {
@@ -9220,11 +10698,14 @@
             "PhoneCall",
             "Search",
             "FileText",
-            "CheckCircle2",
             "ShieldCheck",
-            "ArrowRight",
             "RefreshCw",
-            "Volume2"
+            "Volume2",
+            "Building2",
+            "GraduationCap",
+            "Lock",
+            "Layers",
+            "AlertCircle"
           ]
         },
         {
@@ -9266,6 +10747,12 @@
           ]
         },
         {
+          "source": "@/lib/auth-context",
+          "specifiers": [
+            "useAuth"
+          ]
+        },
+        {
           "source": "@/lib/api-client",
           "specifiers": [
             "* as api"
@@ -9275,7 +10762,12 @@
           "source": "@/lib/api-client",
           "specifiers": [
             "StudentSearchResult",
-            "GeneratedScript"
+            "GeneratedScript",
+            "AcademicTree",
+            "InstituteTreeNode",
+            "DepartmentTreeNode",
+            "ProgramTreeNode",
+            "DivisionSummary"
           ]
         },
         {
@@ -9288,12 +10780,12 @@
       "exports": [
         "NewCallView"
       ],
-      "totalLines": 562,
+      "totalLines": 899,
       "hasStructuralAnalysis": true
     },
     "frontend/src/components/Sidebar.tsx": {
       "filePath": "frontend/src/components/Sidebar.tsx",
-      "contentHash": "077271246937aa2caae766c9dbfe6725ab6358fae68c5718a285531475930007",
+      "contentHash": "cbdb82885288c11906e6a83e1e422d9e94b0902dddc89635ac44893cff416949",
       "functions": [
         {
           "name": "initialsOf",
@@ -9336,7 +10828,7 @@
       "exports": [
         "Sidebar"
       ],
-      "totalLines": 169,
+      "totalLines": 175,
       "hasStructuralAnalysis": true
     },
     "frontend/src/components/TranscriptView.tsx": {
@@ -9366,7 +10858,7 @@
     },
     "frontend/src/components/UsersView.tsx": {
       "filePath": "frontend/src/components/UsersView.tsx",
-      "contentHash": "fd4a7945feda0260cb758afa538add67b6212988c6001c7fd3719e1858834d8a",
+      "contentHash": "ab46ab48b7883845d592f1a74b85656f264ef75c79ad3591d8bfbeb3ef1e4b4e",
       "functions": [
         {
           "name": "errText",
@@ -9388,7 +10880,7 @@
           "name": "UsersView",
           "params": [],
           "exported": true,
-          "lineCount": 269
+          "lineCount": 571
         }
       ],
       "classes": [],
@@ -9409,11 +10901,19 @@
             "UserPlus",
             "KeyRound",
             "Power",
-            "ShieldCheck",
             "Users",
             "UserCheck",
             "Lock",
-            "Mail"
+            "Mail",
+            "Building2",
+            "GraduationCap",
+            "UploadCloud",
+            "FileSpreadsheet",
+            "Download",
+            "History",
+            "CheckCircle2",
+            "AlertTriangle",
+            "RefreshCw"
           ]
         },
         {
@@ -9451,6 +10951,16 @@
           ]
         },
         {
+          "source": "@/components/ui/select",
+          "specifiers": [
+            "Select",
+            "SelectContent",
+            "SelectItem",
+            "SelectTrigger",
+            "SelectValue"
+          ]
+        },
+        {
           "source": "@/components/ui/table",
           "specifiers": [
             "Table",
@@ -9471,7 +10981,7 @@
       "exports": [
         "UsersView"
       ],
-      "totalLines": 288,
+      "totalLines": 608,
       "hasStructuralAnalysis": true
     },
     "frontend/src/components/ui/avatar.tsx": {
@@ -9917,7 +11427,7 @@
     },
     "frontend/src/lib/api-client.ts": {
       "filePath": "frontend/src/lib/api-client.ts",
-      "contentHash": "3df25df519c522de6ba99112bafc7461708a344817302b67bc3c5ed983a45c59",
+      "contentHash": "6b770fcb451cee405e8dbb6cf0395f7cb3d423a963d981d3b0c07c6057a40a6d",
       "functions": [
         {
           "name": "loadStoredTokens",
@@ -9939,7 +11449,7 @@
           "params": [],
           "returnType": "Promise<boolean>",
           "exported": false,
-          "lineCount": 30
+          "lineCount": 33
         },
         {
           "name": "request",
@@ -9960,7 +11470,7 @@
           ],
           "returnType": "Promise<StoredTokens>",
           "exported": true,
-          "lineCount": 25
+          "lineCount": 31
         },
         {
           "name": "listUsers",
@@ -9974,7 +11484,7 @@
             "payload"
           ],
           "exported": true,
-          "lineCount": 2
+          "lineCount": 12
         },
         {
           "name": "updateUser",
@@ -9983,7 +11493,7 @@
             "payload"
           ],
           "exported": true,
-          "lineCount": 2
+          "lineCount": 14
         },
         {
           "name": "logout",
@@ -10054,6 +11564,78 @@
           "returnType": "Promise<CallScript>",
           "exported": true,
           "lineCount": 6
+        },
+        {
+          "name": "getAcademicTree",
+          "params": [],
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "listInstitutes",
+          "params": [],
+          "exported": true,
+          "lineCount": 1
+        },
+        {
+          "name": "listDepartments",
+          "params": [
+            "instituteId"
+          ],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "listBatches",
+          "params": [
+            "programId"
+          ],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "listDivisions",
+          "params": [
+            "batchId"
+          ],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "listStudents",
+          "params": [
+            "params"
+          ],
+          "returnType": "Promise<PaginatedStudents>",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "getStudent",
+          "params": [
+            "studentId"
+          ],
+          "returnType": "Promise<StudentSearchResult>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "uploadStudentsRoster",
+          "params": [
+            "file"
+          ],
+          "returnType": "Promise<RosterIngestionResponse>",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "listAuditLogs",
+          "params": [
+            "page",
+            "limit"
+          ],
+          "exported": true,
+          "lineCount": 2
         },
         {
           "name": "searchStudents",
@@ -10196,6 +11778,16 @@
         "createCampaign",
         "generateScript",
         "createScript",
+        "getAcademicTree",
+        "listInstitutes",
+        "listDepartments",
+        "listBatches",
+        "listDivisions",
+        "listStudents",
+        "getStudent",
+        "uploadStudentsRoster",
+        "downloadRosterTemplateUrl",
+        "listAuditLogs",
         "searchStudents",
         "listScripts",
         "listCampaignTasks",
@@ -10209,12 +11801,12 @@
         "getSystemStatus",
         "connectCallEvents"
       ],
-      "totalLines": 464,
+      "totalLines": 713,
       "hasStructuralAnalysis": true
     },
     "frontend/src/lib/auth-context.tsx": {
       "filePath": "frontend/src/lib/auth-context.tsx",
-      "contentHash": "c8a8ad5150a4415dd6a0fe91dc2583d39fd98b30b5a2cf6d22065a6d7d7fcbdf",
+      "contentHash": "c08abfcafc61550864847d9f0f79c7448fe664b59d0cc1e41151c6d0a293d9bc",
       "functions": [
         {
           "name": "AuthProvider",
@@ -10222,7 +11814,7 @@
             "{ children }"
           ],
           "exported": true,
-          "lineCount": 23
+          "lineCount": 43
         },
         {
           "name": "useAuth",
@@ -10256,7 +11848,7 @@
         "AuthProvider",
         "useAuth"
       ],
-      "totalLines": 47,
+      "totalLines": 73,
       "hasStructuralAnalysis": true
     },
     "frontend/src/lib/call-status.ts": {
@@ -10369,7 +11961,7 @@
     },
     "frontend/src/services/api.ts": {
       "filePath": "frontend/src/services/api.ts",
-      "contentHash": "1335fb7dae7eb87ed1e2fcc314410737401edd146fef4e40d241be543f51fdd6",
+      "contentHash": "75d1eb3baa3cf8382ee4a894e6ce5b5a1494a9da3a0dc502d4144ed828d7ddc3",
       "functions": [],
       "classes": [],
       "imports": [],
