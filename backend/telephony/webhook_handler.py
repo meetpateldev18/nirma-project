@@ -610,6 +610,11 @@ async def _execute_call_input(
                 return Response(content=xml_content, media_type="application/xml")
 
             response_audio_url = None
+            if lang == "gu" or carrier != "twilio":
+                try:
+                    response_audio_url = await ai_pipeline.tts.synthesize(text=assistant_reply, language=lang)
+                except Exception as tts_err:
+                    logger.warning("Turn TTS synthesis failed (%s): %s", lang, tts_err)
         else:
             # Audio recording fallback path (e.g. Plivo audio upload)
             context: Dict[str, Any] = {
@@ -820,9 +825,17 @@ async def _execute_call_continue(
             call_status="completed",
         ))
 
+    response_audio_url = None
+    if lang == "gu" or carrier != "twilio":
+        try:
+            response_audio_url = await ai_pipeline.tts.synthesize(text=assistant_reply, language=lang)
+        except Exception as tts_err:
+            logger.warning("Continue turn TTS synthesis failed (%s): %s", lang, tts_err)
+
     input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id}")
     xml_content = _build_carrier_xml(
         carrier=carrier,
+        audio_url=response_audio_url,
         say_text=assistant_reply,
         action_url=input_action_url if not should_hangup else None,
         hangup=should_hangup,

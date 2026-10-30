@@ -142,6 +142,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Launch active call watchdog monitor
     watchdog_task = asyncio.create_task(_active_call_watchdog())
 
+    # Pre-warm multilingual filler audio in background
+    async def _prewarm_fillers():
+        try:
+            from backend.ai_pipeline.tts import FallbackTTS
+            from backend.telephony.webhook_handler import FILLER_PROMPTS
+            tts = FallbackTTS()
+            for l, t in FILLER_PROMPTS.items():
+                await tts.synthesize(t, l)
+            logger.info("Pre-warmed multilingual telephony filler audio caches.")
+        except Exception as e:
+            logger.warning("Could not prewarm filler audio: %s", e)
+
+    asyncio.create_task(_prewarm_fillers())
+
     try:
         yield
     finally:

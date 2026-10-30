@@ -333,7 +333,7 @@ class FallbackTTS(TTSAdapter):
         self,
         primary: Optional[TTSAdapter] = None,
         fallback: Optional[TTSAdapter] = None,
-        timeout_seconds: float = 2.0,
+        timeout_seconds: float = 4.0,
     ) -> None:
         """
         Initializes the FallbackTTS composite cascade.

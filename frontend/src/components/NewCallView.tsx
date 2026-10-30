@@ -743,10 +743,10 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   ) : (
                     <label className="flex items-center justify-center gap-2 h-10 rounded-xl border border-dashed border-hairline-strong bg-canvas-elevated/40 hover:bg-canvas-elevated text-xs text-body hover:text-ink cursor-pointer transition-colors">
                       <Paperclip className="w-3.5 h-3.5 text-mute" />
-                      <span>Attach .txt or .pdf</span>
+                      <span>Attach circular (.pdf, .docx, .txt)</span>
                       <input
                         type="file"
-                        accept=".txt,.pdf,.md"
+                        accept=".pdf,.docx,.doc,.txt,.md"
                         className="hidden"
                         onChange={(e) => setDocument(e.target.files?.[0] ?? null)}
                       />
@@ -822,10 +822,17 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                   {/* System Prompt Context */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-body">
-                      <span>Conversational Context (Max 35 Words)</span>
-                      <span className="text-mute font-mono">{systemStatus?.llm_model || 'Gemini Flash'} Locked</span>
+                      <span className="font-semibold text-ink flex items-center gap-1.5">
+                        <span>AI Knowledge Base & Instructions</span>
+                        {generated.used_document && (
+                          <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-mono font-normal">
+                            Document Integrated
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-mute font-mono">Voice SLA: &lt;35w/turn</span>
                     </div>
-                    <div className="rounded-xl border border-hairline bg-canvas-elevated p-3.5 text-xs text-body font-mono leading-relaxed max-h-40 overflow-y-auto">
+                    <div className="rounded-xl border border-hairline bg-canvas-elevated p-3.5 text-xs text-body font-mono leading-relaxed max-h-56 overflow-y-auto whitespace-pre-wrap">
                       {generated.system_prompt}
                     </div>
                   </div>

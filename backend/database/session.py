@@ -37,12 +37,12 @@ from backend.config import settings
 async_engine: AsyncEngine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
-    pool_size=10,  # Optimized for Supabase transaction poolers / PgBouncer
-    max_overflow=5,
+    pool_size=10,  # Optimized for Supabase transaction pooler (port 6543)
+    max_overflow=10,
     pool_pre_ping=True,
     pool_recycle=1800,  # Recycle connections every 30 minutes
     connect_args={
-        "statement_cache_size": 0,  # Safe for Supabase connection poolers / PgBouncer
+        "statement_cache_size": 0,  # Required for Supabase transaction poolers / PgBouncer
         "server_settings": {"application_name": "nirma_ai_call_agent"},
     },
 )

@@ -26,7 +26,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.ai_pipeline.script_writer import build_opening_message, extract_document_text, generate_system_prompt
+from backend.ai_pipeline.script_writer import (
+    build_opening_message,
+    extract_document_text,
+    generate_call_script,
+    generate_system_prompt,
+)
 from backend.api.auth import get_current_user, require_admin
 from backend.config import settings
 from backend.database.models import CallCampaign, CallScript, CallTask, StaffUser, utc_now
@@ -297,8 +302,7 @@ async def generate_script(
         raw_bytes = await document.read()
         document_text = extract_document_text(document.filename or "", raw_bytes)
 
-    opening_message = build_opening_message(reason, language)
-    system_prompt = await generate_system_prompt(reason, language, document_text)
+    opening_message, system_prompt = await generate_call_script(reason, language, document_text)
 
     return GeneratedScriptResponse(
         opening_message=opening_message,

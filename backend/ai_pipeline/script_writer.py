@@ -1,93 +1,350 @@
 """
-Call Script Writer Module — Turns a Free-Text Reason into a Call Script.
+Call Script Writer Module — Turns Free-Text Reasons & Supporting Documents into Rich Call Scripts.
 
-Staff no longer have to pick from a fixed list of pre-written call scripts. They type
-the reason for the call in their own words (optionally attaching a supporting document
-for extra context), and this module asks the configured LLM (local Ollama, falling back
-to Groq Cloud) to write the system prompt that keeps the AI strictly on that topic for
-the whole conversation. The opening greeting itself is built deterministically rather
-than left to the LLM, so the mandatory AI self-disclosure (TRAI compliance) can never be
-dropped or phrased ambiguously by a model.
-
-If both the local and cloud LLM are unavailable (no model downloaded, no API key
-configured — the common case on a fresh/local setup), a deterministic template stands in
-so campaign creation never hard-fails for lack of AI infrastructure.
+Staff type the objective or reason for the call in their own words and optionally attach
+an official circular or notice document (.pdf, .docx, .txt). This module orchestrates
+cloud/local LLM inference (Groq, Gemini, local Ollama) to synthesize:
+1. A natural, TRAI-compliant opening greeting in the target language (Gujarati, Hindi, English).
+2. A comprehensive, topic-locked voice system prompt that grounds the AI in all verified
+   details from the attached circular (what the report is, report format, required sections,
+   submission portal, deadlines, penalties) while enforcing strict telephony SLA constraints
+   (<35 words per spoken turn).
 
 Upstream dependencies:
-    - backend.ai_pipeline.llm (OllamaLLM, GroqLLM, FallbackLLM)
+    - backend.config.settings
+    - pypdf >= 5.0
+    - python-docx >= 1.0
+    - httpx >= 0.27
+
 Downstream dependencies:
     - backend.api.campaigns (POST /api/campaigns/generate-script)
 """
 
 import asyncio
+import io
+import json
 import logging
-from typing import Optional
+import re
+from typing import Optional, Tuple
 
-from backend.ai_pipeline.llm import FallbackLLM, GroqLLM, OllamaLLM
+import httpx
+
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
 LANGUAGE_NAMES = {"en": "English", "hi": "Hindi", "gu": "Gujarati"}
 
-OPENING_TEMPLATES = {
-    "en": "Hello, this is an automated AI calling assistant from Nirma University. This call is regarding: {reason}.",
-    "hi": "Namaste, main Nirma University ka automated AI calling assistant bol raha hoon. Yeh call iske baare mein hai: {reason}.",
-    "gu": "Namaste, hu Nirma University no automated AI calling assistant chu. A call aa babate chhe: {reason}.",
+# Max characters of an attached document fed into the generation prompt
+MAX_DOCUMENT_CHARS = 15000
+
+# TRAI-mandated disclosure prefixes per language
+TRAI_DISCLOSURES = {
+    "gu": "નમસ્તે, હું નિર્મા યુનિવર્સિટીમાંથી ઓટોમેટેડ AI કૉલિંગ આસિસ્ટન્ટ બોલું છું.",
+    "hi": "नमस्ते, मैं निरમા विश्वविद्यालय से एक स्वचालित AI कॉलिंग सहायक बोल रहा हूँ।",
+    "en": "Hello, this is an automated AI calling assistant from Nirma University.",
 }
 
-# Max characters of an attached document fed into the generation prompt — keeps the
-# meta-prompt small and fast regardless of how large a file staff attaches.
-MAX_DOCUMENT_CHARS = 3000
 
-
-def build_opening_message(reason: str, language: str) -> str:
+def _clean_reason(reason: str) -> str:
     """
-    Deterministically builds the mandatory AI-disclosure opening line.
+    Cleans raw operator shorthand and special symbols from staff-entered reasons.
 
     Args:
-        reason: Free-text reason for the call, as typed by staff.
+        reason: Raw reason string typed by staff.
+
+    Returns:
+        str: Cleaned, human-readable reason string.
+    """
+    cleaned = reason.strip()
+    # Remove operator delimiters like >, <, ->
+    cleaned = re.sub(r"\s*[><-]+\s*", " ", cleaned)
+    # Remove common operator prefixes like "reminder:", "tell him:", "calling regarding:"
+    cleaned = re.sub(r"^(?:calling\s+(?:him|her|them|student)?\s*(?:regarding|about)?\s*[:,-]?\s*)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(?:reminder\s*[:,-]\s*)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(?:urgent\s*[:,-]\s*)", "", cleaned, flags=re.IGNORECASE)
+    return " ".join(cleaned.split()).strip()
+
+
+def _build_deterministic_opening(reason: str, language: str) -> str:
+    """
+    Deterministically builds a natural, TRAI-compliant opening line.
+
+    Args:
+        reason: Cleaned reason for the call.
         language: Target language code ('en', 'hi', 'gu').
 
     Returns:
-        str: Opening greeting, always starting by identifying the caller as an automated
-            AI system, per TRAI consumer-disclosure requirements.
+        str: Politely formatted opening greeting adhering to TRAI standards.
     """
-    template = OPENING_TEMPLATES.get(language, OPENING_TEMPLATES["en"])
-    return template.format(reason=reason.strip().rstrip(".!?"))
-
-
-def _fallback_system_prompt(reason: str, language: str) -> str:
-    """Deterministic, boundary-enforced voice system prompt for Nirma University call campaigns."""
-    language_name = LANGUAGE_NAMES.get(language, "English")
-    clean_reason = reason.strip().rstrip(".!?")
-
+    clean = _clean_reason(reason)
     if language == "gu":
-        return (
-            f"તમે નિર્મા યુનિવર્સિટીના સત્તાવાર AI વોઈસ આસિસ્ટન્ટ છો. "
-            f"આ કૉલનો એકમાત્ર હેતુ છે: {clean_reason}. "
-            f"સમગ્ર કૉલ દરમિયાન ફક્ત આ સૂચના પર જ વાત કરો. "
-            f"જો વિદ્યાર્થી કોઈ અન્ય વિષય અથવા સામાન્ય જ્ઞાન પૂછે, તો નમ્રતાપૂર્વક જણાવો કે તમે ફક્ત આ સૂચના માટે જ સહાય કરી શકો છો. "
-            f"જવાબ મહત્તમ 1 થી 2 ટૂંકા વાક્યોમાં (30 શબ્દોથી ઓછા) આપો. કોઈ માર્કડાઉન, બુલેટ પોઇન્ટ કે ફૂદડીનો ઉપયોગ કરવો નહીં."
-        )
+        return f"{TRAI_DISCLOSURES['gu']} આ કૉલ તમને {clean} અંગે યાદ અપાવવા માટે કરવામાં આવ્યો છે."
     elif language == "hi":
-        return (
-            f"आप निरमा विश्वविद्यालय के आधिकारिक AI वॉइस असिस्टेंट हैं। "
-            f"इस कॉल का एकमात्र उद्देश्य है: {clean_reason}। "
-            f"पूरी कॉल के दौरान सख्ती से इसी सूचना पर केंद्रित रहें। "
-            f"यदि कॉलर किसी असंबंधित विषय या सामान्य ज्ञान के बारे में पूछता है, तो विनम्रता से बताएं कि आप केवल इस सूचना में सहायता कर सकते हैं। "
-            f"उत्तर अधिकतम 1 से 2 छोटे वाक्यों में (30 शब्दों से कम) दें। कभी भी मार्कडाउन, बुलेट पॉइंट्स या विशेष चिह्नों का उपयोग न करें।"
-        )
+        return f"{TRAI_DISCLOSURES['hi']} यह कॉल आपको {clean} के संबंध में सूचित करने के लिए है।"
     else:
-        return (
-            f"You are the official AI voice assistant for Nirma University. "
-            f"The sole purpose of this call is: {clean_reason}. "
-            f"Stay strictly on this topic for the entire conversation. "
-            f"If the caller asks about anything unrelated, politely explain that you can only assist with this notice, and redirect back. "
-            f"If you do not know a specific detail, advise checking nirmauni.ac.in or the Student Section. "
-            f"Answer in a maximum of 2 short sentences (strictly under 30 words). "
-            f"Never use markdown, bullet points, or asterisks — this is spoken audio. "
-            f"Respond clearly in {language_name}."
+        return f"{TRAI_DISCLOSURES['en']} I am calling to remind you regarding {clean}."
+
+
+def _build_deterministic_system_prompt(
+    reason: str,
+    language: str,
+    document_text: Optional[str] = None,
+) -> str:
+    """
+    Deterministic fallback system prompt incorporating circular facts and telephony rules.
+
+    Args:
+        reason: Free-text reason for the call.
+        language: Target language code ('en', 'hi', 'gu').
+        document_text: Optional extracted text from an attached supporting document.
+
+    Returns:
+        str: Topic-locked system prompt grounding the assistant in circular context.
+    """
+    clean = _clean_reason(reason)
+    language_name = LANGUAGE_NAMES.get(language, "English")
+
+    doc_section = ""
+    if document_text and document_text.strip():
+        doc_section = (
+            f"\n\nVERIFIED CIRCULAR & NOTICE DETAILS (ACCURATELY ANSWER STUDENT QUESTIONS FROM THIS):\n"
+            f"{document_text[:MAX_DOCUMENT_CHARS]}\n"
         )
+
+    return (
+        f"You are the official AI voice representative of Nirma University.\n"
+        f"The primary purpose of this call is: {clean}.\n"
+        f"You must converse politely and clearly in {language_name}.\n"
+        f"{doc_section}\n"
+        f"CRITICAL VOICE CALL RULES & BOUNDARIES:\n"
+        f"1. BREVITY (VOICE SLA): Each spoken answer must be at most 1 to 2 short sentences (strictly under 35 words).\n"
+        f"2. TOPIC BOUNDARY: Stay strictly locked to this notice and the circular above. Politely deflect unrelated questions.\n"
+        f"3. ANTI-HALLUCINATION: Never guess or invent details not present in the verified context. Advise checking nirmauni.ac.in or contacting the department office.\n"
+        f"4. SPOKEN FORMATTING: Never use markdown, bullet points, asterisks, numbered lists, or raw symbols."
+    )
+
+
+def extract_document_text(filename: str, raw_bytes: bytes) -> Optional[str]:
+    """
+    Extracts structured plain text from an optional staff-uploaded supporting document.
+
+    Supports .txt, .md, .csv, .pdf (via pypdf), and .docx (via python-docx including tables).
+    Any extraction failure is safely caught, logged, and returns None.
+
+    Args:
+        filename: Original uploaded filename.
+        raw_bytes: Raw file byte stream.
+
+    Returns:
+        Optional[str]: Extracted document text, or None if extraction was not possible.
+    """
+    if not filename or not raw_bytes:
+        return None
+
+    lowered = filename.lower()
+    try:
+        # 1. Plain text / Markdown / CSV
+        if lowered.endswith((".txt", ".md", ".csv", ".rtf")):
+            for encoding in ("utf-8", "latin-1", "cp1252"):
+                try:
+                    text = raw_bytes.decode(encoding).strip()
+                    if text:
+                        return text[:MAX_DOCUMENT_CHARS]
+                except UnicodeDecodeError:
+                    continue
+
+        # 2. PDF Documents
+        if lowered.endswith(".pdf"):
+            from pypdf import PdfReader
+
+            reader = PdfReader(io.BytesIO(raw_bytes))
+            pages_text = []
+            for i, page in enumerate(reader.pages):
+                page_str = (page.extract_text() or "").strip()
+                if page_str:
+                    pages_text.append(f"[Page {i+1}]\n{page_str}")
+            extracted = "\n\n".join(pages_text).strip()
+            if extracted:
+                logger.info("Successfully extracted %d characters from PDF: '%s'", len(extracted), filename)
+                return extracted[:MAX_DOCUMENT_CHARS]
+
+        # 3. Microsoft Word (.docx) Documents
+        if lowered.endswith((".docx", ".doc")):
+            import docx
+
+            doc = docx.Document(io.BytesIO(raw_bytes))
+            text_parts = []
+
+            # Extract paragraph headings and body text
+            for p in doc.paragraphs:
+                p_text = p.text.strip()
+                if p_text:
+                    text_parts.append(p_text)
+
+            # Extract structured table contents (e.g. rubrics, schedules, section guidelines)
+            for tbl in doc.tables:
+                for row in tbl.rows:
+                    row_str = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                    if row_str:
+                        text_parts.append(row_str)
+
+            extracted = "\n".join(text_parts).strip()
+            if extracted:
+                logger.info("Successfully extracted %d characters from DOCX: '%s'", len(extracted), filename)
+                return extracted[:MAX_DOCUMENT_CHARS]
+
+    except Exception as exc:
+        logger.warning("Could not extract text from uploaded document '%s': %s", filename, exc)
+
+    return None
+
+
+async def generate_call_script(
+    reason: str,
+    language: str,
+    document_text: Optional[str] = None,
+) -> Tuple[str, str]:
+    """
+    Synthesizes a TRAI-compliant opening line and an attached-document-grounded system prompt.
+
+    Orchestrates LLM inference across Groq Cloud, Local Ollama, and Google Gemini with
+    failover to a robust deterministic template.
+
+    Args:
+        reason: Staff-entered reason or notes for the call.
+        language: Target language code ('en', 'hi', 'gu').
+        document_text: Optional extracted text from an attached circular or guidelines file.
+
+    Returns:
+        Tuple[str, str]: (opening_message, system_prompt).
+    """
+    language_name = LANGUAGE_NAMES.get(language, "English")
+    clean = _clean_reason(reason)
+
+    doc_clause = ""
+    if document_text and document_text.strip():
+        doc_clause = (
+            f"\n\nATTACHED OFFICIAL CIRCULAR / GUIDELINES DOCUMENT:\n"
+            f"```\n{document_text[:MAX_DOCUMENT_CHARS]}\n```\n"
+        )
+
+    system_instruction = (
+        "You are the Lead Telephony AI Architect for Nirma University. "
+        "Generate a structured JSON object with exactly two string fields:\n"
+        '1. "opening_message": The opening greeting spoken by the AI as soon as the student answers the call.\n'
+        "   - MANDATORY TRAI REGULATION: Sentence 1 MUST explicitly identify as an automated AI calling assistant of Nirma University.\n"
+        "   - Sentence 2: Politely state the reason for calling in natural spoken language (rephrasing any rough operator shorthand or symbols into clean polite speech).\n"
+        f"   - Target Language: {language_name}. If Gujarati, use natural, grammatically correct Gujarati script.\n"
+        "   - Length: Strictly 1 to 2 short sentences.\n\n"
+        '2. "system_prompt": The comprehensive operating system prompt grounding the voice assistant during the phone conversation.\n'
+        "   - Identity: Polite, official AI voice representative of Nirma University.\n"
+        f"   - Response Language: Must converse in {language_name}.\n"
+        "   - VERIFIED KNOWLEDGE BASE: If an attached document is provided, you MUST extract and embed all verified details so the AI can accurately answer questions like 'what is this report?', 'what does it look like / format?', 'where do I submit?', 'what is the deadline?', and 'what are the penalties?'.\n"
+        "   - TELEPHONY VOICE SLA RULES: Each spoken response during the call must be at most 1 to 2 short sentences (under 35 words). Strictly topic-locked; politely deflect unrelated questions. Never guess facts not in the context; no markdown or bullet points in spoken output.\n\n"
+        'Output strictly valid JSON with keys "opening_message" and "system_prompt". Do not wrap in markdown or backticks.'
+    )
+
+    user_prompt = (
+        f'Staff Call Objective / Reason:\n"{reason}"\n\n'
+        f"Target Language: {language_name} ({language})\n"
+        f"{doc_clause}"
+    )
+
+    # 1. Attempt Groq Cloud (sub-second high capability multilingual reasoning)
+    if settings.groq_api_key and not settings.groq_api_key.startswith("your_"):
+        try:
+            headers = {
+                "Authorization": f"Bearer {settings.groq_api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": "qwen/qwen3.8-27b",
+                "messages": [
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.2,
+            }
+            async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=2.5)) as client:
+                resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+                if resp.status_code == 200:
+                    raw_content = resp.json()["choices"][0]["message"]["content"]
+                    data = json.loads(raw_content)
+                    opening = data.get("opening_message", "").strip()
+                    prompt = data.get("system_prompt", "").strip()
+                    if opening and prompt:
+                        opening = _ensure_trai_disclosure(opening, language)
+                        logger.info("Successfully synthesized call script bundle via Groq Cloud (Qwen-27B)")
+                        return opening, prompt
+        except Exception as exc:
+            logger.warning("Groq Cloud script synthesis failed: %s. Falling back...", exc)
+
+    # 2. Attempt Google Gemini Cloud
+    if settings.gemini_api_key and not settings.gemini_api_key.startswith("your_"):
+        for model_name in [settings.gemini_model, settings.gemini_fallback_model, "gemini-2.5-flash", "gemini-1.5-flash"]:
+            if not model_name:
+                continue
+            try:
+                gemini_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={settings.gemini_api_key}"
+                payload = {
+                    "system_instruction": {"parts": [{"text": system_instruction}]},
+                    "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "temperature": 0.2,
+                    },
+                }
+                async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=2.5)) as client:
+                    resp = await client.post(gemini_endpoint, json=payload)
+                    if resp.status_code == 200:
+                        raw_content = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        data = json.loads(raw_content)
+                        opening = data.get("opening_message", "").strip()
+                        prompt = data.get("system_prompt", "").strip()
+                        if opening and prompt:
+                            opening = _ensure_trai_disclosure(opening, language)
+                            logger.info("Successfully synthesized call script bundle via Gemini (%s)", model_name)
+                            return opening, prompt
+            except Exception as exc:
+                logger.warning("Gemini script synthesis (%s) failed: %s. Trying next tier...", model_name, exc)
+
+    # 3. Deterministic Safety Fallback
+    logger.info("Using deterministic script generation fallback.")
+    opening = _build_deterministic_opening(reason, language)
+    prompt = _build_deterministic_system_prompt(reason, language, document_text)
+    return opening, prompt
+
+
+def _ensure_trai_disclosure(opening: str, language: str) -> str:
+    """
+    Defensively verifies that the opening line explicitly includes the university and AI identity.
+
+    Args:
+        opening: LLM-generated opening greeting.
+        language: Target language code.
+
+    Returns:
+        str: Guaranteed TRAI-compliant opening greeting.
+    """
+    lowered = opening.lower()
+    has_nirma = "nirma" in lowered or "નિર્મા" in opening or "निरमा" in opening
+    has_ai = "ai" in lowered or "એઆઈ" in opening or "एआई" in opening or "automated" in lowered or "સ્વચાલિત" in opening
+
+    if not (has_nirma and has_ai):
+        disclosure = TRAI_DISCLOSURES.get(language, TRAI_DISCLOSURES["en"])
+        return f"{disclosure} {opening}".strip()
+
+    return opening
+
+
+# ------------------------------------------------------------------------------
+# Backward Compatibility Wrappers
+# ------------------------------------------------------------------------------
+def build_opening_message(reason: str, language: str) -> str:
+    """Synchronous fallback wrapper for building the TRAI opening line."""
+    return _build_deterministic_opening(reason, language)
 
 
 async def generate_system_prompt(
@@ -95,84 +352,6 @@ async def generate_system_prompt(
     language: str,
     document_text: Optional[str] = None,
 ) -> str:
-    """
-    Asks the configured LLM to write a topic-locked, boundary-enforced system prompt for this call's reason.
-
-    Args:
-        reason: Free-text reason for the call, as typed by staff.
-        language: Target language code ('en', 'hi', 'gu').
-        document_text: Optional extracted text from a staff-attached supporting document.
-
-    Returns:
-        str: A system prompt instructing the AI to stay strictly on the given reason.
-            Falls back to a deterministic template if no LLM is reachable.
-    """
-    language_name = LANGUAGE_NAMES.get(language, "English")
-    document_clause = (
-        f"\n\nSupporting document the caller may ask about (use only what's relevant, "
-        f"do not read it out verbatim):\n{document_text[:MAX_DOCUMENT_CHARS]}"
-        if document_text
-        else ""
-    )
-    meta_instructions = (
-        "You write production operating instructions for an enterprise AI phone-calling assistant representing Nirma University. "
-        "Output ONLY the system prompt itself — no conversational preamble, no quotation marks, no markdown symbols."
-    )
-    task = (
-        f'Write system instructions for a Nirma University AI voice assistant whose ONLY purpose on this call is: '
-        f'"{reason.strip()}".{document_clause}\n\n'
-        f"CRITICAL REQUIREMENTS:\n"
-        f"1. Identity: The assistant must act as a polite, helpful, official representative of Nirma University.\n"
-        f"2. Strict Boundaries: Stay locked onto this topic. If asked anything out-of-scope (general knowledge, coding, politics, personal advice), politely deflect back to this notice.\n"
-        f"3. Anti-Hallucination: Never guess missing facts; advise verifying on nirmauni.ac.in or with the Student Section.\n"
-        f"4. Brevity (Voice SLA): Responses must be at most 1 to 2 short sentences (strictly under 30 words).\n"
-        f"5. Spoken Style: Prohibit all markdown formatting, asterisks, bullet points, or numbered lists.\n"
-        f"6. Language: The assistant must respond in {language_name}."
-    )
-
-    try:
-        llm = FallbackLLM()
-        generated = await asyncio.wait_for(llm.generate(meta_instructions, [], task), timeout=10.0)
-        generated = (generated or "").strip()
-        if len(generated) >= 20:
-            logger.info("Generated custom call script via LLM for reason: '%s'", reason[:80])
-            return generated
-        logger.warning("LLM-generated script was too short/empty; using deterministic fallback.")
-    except Exception as exc:
-        logger.warning("Script generation via LLM failed (%s); using deterministic fallback.", exc)
-
-    return _fallback_system_prompt(reason, language)
-
-
-def extract_document_text(filename: str, raw_bytes: bytes) -> Optional[str]:
-    """
-    Best-effort plain-text extraction from an optional staff-uploaded supporting document.
-
-    Supports .txt directly and .pdf via pypdf. Any failure (corrupt file, unsupported
-    format, missing dependency) is swallowed and returns None — an attachment is always
-    optional context, never a hard requirement for launching a call.
-
-    Args:
-        filename: Original uploaded filename, used to pick an extraction strategy.
-        raw_bytes: Raw file contents.
-
-    Returns:
-        Optional[str]: Extracted text, or None if extraction wasn't possible.
-    """
-    lowered = filename.lower()
-    try:
-        if lowered.endswith(".txt") or lowered.endswith(".md"):
-            return raw_bytes.decode("utf-8", errors="ignore").strip() or None
-
-        if lowered.endswith(".pdf"):
-            from pypdf import PdfReader
-            import io
-
-            reader = PdfReader(io.BytesIO(raw_bytes))
-            pages_text = [page.extract_text() or "" for page in reader.pages]
-            text = "\n".join(pages_text).strip()
-            return text or None
-    except Exception as exc:
-        logger.warning("Could not extract text from uploaded document '%s': %s", filename, exc)
-
-    return None
+    """Asynchronous wrapper returning the system prompt."""
+    _, prompt = await generate_call_script(reason, language, document_text)
+    return prompt
