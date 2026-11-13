@@ -445,7 +445,7 @@ export const UsersView: React.FC = () => {
             {activeCount} Active
           </Badge>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
@@ -564,7 +564,7 @@ export const UsersView: React.FC = () => {
               <RefreshCw className="w-3 h-3 mr-1" /> Refresh
             </Button>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table className="min-w-[680px]">
               <TableHeader>
                 <TableRow>

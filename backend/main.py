@@ -142,19 +142,42 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Launch active call watchdog monitor
     watchdog_task = asyncio.create_task(_active_call_watchdog())
 
-    # Pre-warm multilingual filler audio in background
+    # Pre-warm multilingual filler & silence prompts audio in background for 0ms telephony delivery
     async def _prewarm_fillers():
         try:
             from backend.ai_pipeline.tts import FallbackTTS
-            from backend.telephony.webhook_handler import FILLER_PROMPTS
+            from backend.telephony.webhook_handler import (
+                FILLER_PROMPTS,
+                SILENCE_PROMPTS_TIER_1,
+                SILENCE_PROMPTS_TIER_2,
+                SILENCE_PROMPTS_TIER_3,
+            )
             tts = FallbackTTS()
             for l, t in FILLER_PROMPTS.items():
                 await tts.synthesize(t, l)
-            logger.info("Pre-warmed multilingual telephony filler audio caches.")
+            for l, t in SILENCE_PROMPTS_TIER_1.items():
+                await tts.synthesize(t, l)
+            for l, t in SILENCE_PROMPTS_TIER_2.items():
+                await tts.synthesize(t, l)
+            for l, t in SILENCE_PROMPTS_TIER_3.items():
+                await tts.synthesize(t, l)
+            logger.info("Pre-warmed multilingual telephony filler and silence audio caches.")
         except Exception as e:
-            logger.warning("Could not prewarm filler audio: %s", e)
+            logger.warning("Could not prewarm filler/silence audio: %s", e)
 
     asyncio.create_task(_prewarm_fillers())
+
+    # Pre-warm in-memory Student Trie search index on startup (< 1ms search readiness)
+    async def _prewarm_student_trie():
+        try:
+            from backend.services.student_trie import student_trie
+            async with AsyncSessionLocal() as session:
+                count = await student_trie.load_from_db(session)
+                logger.info("Pre-warmed in-memory Student Trie with %d students.", count)
+        except Exception as e:
+            logger.warning("Could not prewarm student trie on startup: %s", e)
+
+    asyncio.create_task(_prewarm_student_trie())
 
     try:
         yield

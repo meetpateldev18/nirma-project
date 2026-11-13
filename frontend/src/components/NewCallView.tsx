@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/lib/auth-context';
+import { formatPhoneNumber } from '@/lib/utils';
 import * as api from '@/lib/api-client';
 import type {
   StudentSearchResult,
@@ -194,10 +195,10 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
     return activeProgram.batches.flatMap((b) => b.divisions);
   }, [activeProgram]);
 
-  // Student search effect
+  // Student search effect (instant search starting from 1 character via in-memory Trie)
   useEffect(() => {
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
-    if (studentQuery.trim().length < 2) {
+    if (studentQuery.trim().length < 1) {
       setStudentResults([]);
       return;
     }
@@ -211,7 +212,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
       } finally {
         setIsSearching(false);
       }
-    }, 300);
+    }, 75);
     return () => {
       if (searchDebounce.current) clearTimeout(searchDebounce.current);
     };
@@ -350,7 +351,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                 <button
                   type="button"
                   onClick={() => setMode('individual')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+                  className={`min-h-[44px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all ${
                     mode === 'individual'
                       ? 'bg-white text-ink shadow-sm'
                       : 'text-body hover:text-ink'
@@ -362,7 +363,7 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                 <button
                   type="button"
                   onClick={() => setMode('group')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+                  className={`min-h-[44px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all ${
                     mode === 'group'
                       ? 'bg-white text-ink shadow-sm'
                       : 'text-body hover:text-ink'
@@ -424,26 +425,25 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                         </Button>
                       </div>
 
-                      {/* Standing Metrics Bar */}
+                      {/* Academic & Phone Metadata Bar (dynamically fetched from backend) */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 border-t border-hairline/60 text-xs font-mono">
-                        <div className="bg-white/80 p-2 rounded-lg border border-hairline/50">
+                        <div className="bg-white/80 p-2.5 rounded-lg border border-hairline/50">
                           <span className="text-[10px] text-mute uppercase block">Phone</span>
-                          <span className="text-ink font-semibold tabular-nums">{selectedStudent.phone}</span>
-                        </div>
-                        <div className="bg-white/80 p-2 rounded-lg border border-hairline/50">
-                          <span className="text-[10px] text-mute uppercase block">Attendance</span>
-                          <span className={`font-semibold tabular-nums ${(selectedStudent.attendance_pct ?? 100) < 75 ? 'text-telemetry-amber' : 'text-live-pulse'}`}>
-                            {selectedStudent.attendance_pct !== null && selectedStudent.attendance_pct !== undefined
-                              ? `${selectedStudent.attendance_pct}%`
-                              : '100%'}
+                          <span className="text-ink font-semibold tabular-nums">
+                            {formatPhoneNumber(selectedStudent.phone)}
                           </span>
                         </div>
-                        <div className="bg-white/80 p-2 rounded-lg border border-hairline/50 col-span-2 sm:col-span-1">
-                          <span className="text-[10px] text-mute uppercase block">Outstanding Fee</span>
-                          <span className={`font-semibold tabular-nums ${(selectedStudent.pending_fee_inr ?? 0) > 0 ? 'text-primary' : 'text-mute'}`}>
-                            {selectedStudent.pending_fee_inr !== null && selectedStudent.pending_fee_inr !== undefined && selectedStudent.pending_fee_inr > 0
-                              ? `₹${selectedStudent.pending_fee_inr.toLocaleString()}`
-                              : 'Nil'}
+                        <div className="bg-white/80 p-2.5 rounded-lg border border-hairline/50">
+                          <span className="text-[10px] text-mute uppercase block">Semester</span>
+                          <span className="text-ink font-semibold tabular-nums">
+                            {selectedStudent.semester ? `Semester ${selectedStudent.semester}` : '—'}
+                          </span>
+                        </div>
+                        <div className="bg-white/80 p-2.5 rounded-lg border border-hairline/50 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] text-mute uppercase block">Division / Batch</span>
+                          <span className="text-ink font-semibold truncate block">
+                            {selectedStudent.division_code ? `Div ${selectedStudent.division_code}` : '—'}
+                            {selectedStudent.lab_batch ? ` (${selectedStudent.lab_batch})` : ''}
                           </span>
                         </div>
                       </div>
@@ -457,8 +457,8 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                         onChange={(e) => setStudentQuery(e.target.value)}
                         placeholder={
                           isOperator
-                            ? `Search ${user?.department_code || 'CSE'} students by name, roll (e.g. 23BCE045), phone...`
-                            : "Search students by name, roll (e.g. 23BCE045), phone..."
+                            ? `Search ${user?.department_code || 'CSE'} students by name, roll (e.g. 23BCE078), phone...`
+                            : "Search students by name, roll (e.g. 23BCE078), phone..."
                         }
                         className="w-full pl-10 pr-10 h-10 rounded-xl border border-hairline-strong bg-white text-sm text-ink placeholder:text-mute focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                       />
@@ -495,15 +495,18 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                                 </div>
                               </div>
                               <div className="text-right font-mono text-[11px]">
-                                <div className="text-ink tabular-nums">{s.phone}</div>
-                                {s.attendance_pct !== null && s.attendance_pct !== undefined && (
-                                  <div className={`text-[10px] ${s.attendance_pct < 75 ? 'text-telemetry-amber font-semibold' : 'text-live-pulse'}`}>
-                                    {s.attendance_pct}% Attd
-                                  </div>
-                                )}
+                                <div className="text-ink font-semibold tabular-nums">{formatPhoneNumber(s.phone)}</div>
+                                <div className="text-[10px] text-mute">
+                                  {s.semester ? `Sem ${s.semester}` : 'Enrolled'}
+                                </div>
                               </div>
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {studentQuery.trim().length >= 1 && !isSearching && studentResults.length === 0 && (
+                        <div className="absolute z-20 mt-1.5 w-full rounded-xl border border-hairline bg-white shadow-xl p-3 text-center text-xs text-mute">
+                          No matching students found for "{studentQuery.trim()}".
                         </div>
                       )}
                     </div>
@@ -695,9 +698,9 @@ export const NewCallView: React.FC<NewCallViewProps> = ({ onCallLaunched, onNavi
                       key={idx}
                       type="button"
                       onClick={() => setReason(prompt)}
-                      className="text-left text-[11px] px-2.5 py-1 rounded-full bg-canvas-elevated hover:bg-primary/10 hover:text-primary text-body border border-hairline transition-colors"
+                      className="text-left text-xs sm:text-[11px] min-h-[36px] sm:min-h-[28px] px-3 py-1.5 rounded-full bg-canvas-elevated hover:bg-primary/10 hover:text-primary text-body border border-hairline transition-colors flex items-center"
                     >
-                      {prompt.slice(0, 36)}...
+                      {prompt.length > 40 ? `${prompt.slice(0, 38)}...` : prompt}
                     </button>
                   ))}
                 </div>

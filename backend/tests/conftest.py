@@ -454,9 +454,9 @@ async def seed_students(db_session: AsyncSession) -> List[Student]:
     """Seeds a representative cohort of students for filtering and campaign dispatch."""
     students = [
         Student(
-            roll_number="21BCE001",
-            name="Aarav Patel",
-            phone="+919876500001",
+            roll_number="23BCE078",
+            name="Gandhi Urva Yogeshkumar",
+            phone="+918866241204",
             language_pref="hi",
             department="CS",
             semester=4,

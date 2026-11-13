@@ -46,14 +46,14 @@ interface MetricCardProps {
 
 const MetricCard: React.FC<MetricCardProps> = ({ label, value, hint, badge, icon, iconBg }) => (
   <Card className="hover:shadow-md hover:border-hairline-strong transition-all duration-200 group">
-    <CardContent className="p-5">
+    <CardContent className="p-4 sm:p-5">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-body">{label}</span>
-        <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center transition-transform group-hover:scale-105 duration-200`}>
+        <span className="text-xs sm:text-sm font-medium text-body">{label}</span>
+        <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${iconBg} flex items-center justify-center transition-transform group-hover:scale-105 duration-200 shrink-0`}>
           {icon}
         </div>
       </div>
-      <div className="mt-3 flex items-baseline gap-2">
+      <div className="mt-2.5 sm:mt-3 flex flex-wrap items-baseline gap-2">
         <span className="text-2xl sm:text-3xl font-bold tracking-tight text-ink tabular-nums">{value}</span>
         {badge && (
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-live-pulse/10 text-live-pulse border border-live-pulse/20">
@@ -61,7 +61,7 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, hint, badge, icon
           </span>
         )}
       </div>
-      <div className="text-xs text-mute mt-1.5 flex items-center gap-1 font-mono">
+      <div className="text-xs text-mute mt-1 sm:mt-1.5 flex items-center gap-1 font-mono">
         <span>{hint}</span>
       </div>
     </CardContent>
@@ -107,8 +107,8 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
 
   return (
     <div className="space-y-6">
-      {/* KPI Stat Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Stat Cards Grid (Mobile 1-col, Tablet 2-col, Desktop 4-col) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
         <MetricCard
           label="Total Calls Dispatched"
           value={(summary?.total_calls ?? 0).toLocaleString()}
@@ -140,11 +140,11 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
         />
       </div>
 
-      {/* Analytics Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Analytics Charts Grid (Stacked on mobile/tablet, 3-col on desktop) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-6">
         {/* Calls Volume Area Chart */}
         <Card className="lg:col-span-2">
-          <CardHeader className="p-5 pb-2 border-b border-hairline flex flex-row items-center justify-between">
+          <CardHeader className="p-4 sm:p-5 pb-2 border-b border-hairline flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <CardTitle className="text-sm font-bold text-ink">Calling Volume & Connect Trends</CardTitle>
               <CardDescription className="text-xs text-body mt-0.5">
@@ -160,8 +160,8 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               </span>
             </div>
           </CardHeader>
-          <CardContent className="p-5">
-            <div className="h-[240px] w-full">
+          <CardContent className="p-4 sm:p-5">
+            <div className="h-[220px] sm:h-[260px] w-full">
               {hasVolume ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
@@ -201,7 +201,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
                   <BarChart3 className="w-8 h-8 text-mute/50" />
                   <p className="text-xs text-mute font-mono">No calls recorded in this 7-day window.</p>
-                  <Button variant="outline" size="sm" onClick={onLaunchNewCampaign} className="h-7 text-xs rounded-full">
+                  <Button variant="outline" size="sm" onClick={onLaunchNewCampaign} className="min-h-[44px] sm:min-h-[28px] sm:h-7 text-xs rounded-full">
                     Launch first call
                   </Button>
                 </div>
@@ -212,7 +212,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
 
         {/* Call Outcomes Distribution */}
         <Card className="flex flex-col">
-          <CardHeader className="p-5 pb-3 border-b border-hairline flex flex-row items-center justify-between">
+          <CardHeader className="p-4 sm:p-5 pb-3 border-b border-hairline flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-sm font-bold text-ink">Call Dispositions</CardTitle>
               <CardDescription className="text-xs text-body mt-0.5">
@@ -225,7 +225,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               </Badge>
             )}
           </CardHeader>
-          <CardContent className="p-5 flex-1 flex flex-col justify-between">
+          <CardContent className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
             {totalOutcomes === 0 ? (
               <div className="h-full min-h-[180px] flex flex-col items-center justify-center text-xs text-mute font-mono">
                 No disposition data yet.
@@ -269,7 +269,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
 
       {/* Recent Campaigns Table Card */}
       <Card>
-        <CardHeader className="p-5 pb-3 border-b border-hairline flex flex-row items-center justify-between">
+        <CardHeader className="p-4 sm:p-5 pb-3 border-b border-hairline flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-sm font-bold text-ink">Recent Outbound Campaigns</CardTitle>
             <CardDescription className="text-xs text-body mt-0.5">
@@ -286,7 +286,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
               No campaigns initiated. Click "Start Call Campaign" to dispatch automated calls.
             </div>
           ) : (
-            <Table>
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40%]">Campaign Name</TableHead>
@@ -339,7 +339,7 @@ export const DashboardView: React.FC<DashboardViewProps> = React.memo(({
                           variant="ghost"
                           size="sm"
                           onClick={onViewTranscripts}
-                          className="h-7 text-xs rounded-full text-primary hover:text-primary hover:bg-primary/10"
+                          className="min-h-[44px] sm:min-h-[28px] sm:h-7 text-xs rounded-full text-primary hover:text-primary hover:bg-primary/10 px-3.5"
                         >
                           Inspect <ArrowUpRight className="w-3 h-3 ml-0.5" />
                         </Button>

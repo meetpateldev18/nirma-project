@@ -511,6 +511,20 @@ async def seed_academic_hierarchy(session: AsyncSession, admin_id: int) -> None:
     div_b = divisions_map.get("B")
     SAMPLE_STUDENTS = [
         {
+            "roll": "23BCE078",
+            "name": "Gandhi Urva Yogeshkumar",
+            "phone": "+918866241204",
+            "department": "Computer Science & Engineering",
+            "semester": 6,
+            "institute_id": itnu.id,
+            "department_id": cse_dept.id if cse_dept else None,
+            "program_id": prog_map.get("BCE").id if prog_map.get("BCE") else None,
+            "batch_id": batch.id if batch else None,
+            "division_id": div_a.id if div_a else None,
+            "lab_batch": "A1",
+            "language_pref": "en",
+        },
+        {
             "roll": "23BCE045",
             "name": "Aarav Patel",
             "phone": "+919876500001",
@@ -522,8 +536,6 @@ async def seed_academic_hierarchy(session: AsyncSession, admin_id: int) -> None:
             "batch_id": batch.id if batch else None,
             "division_id": div_a.id if div_a else None,
             "lab_batch": "A2",
-            "attendance_pct": 68.50,
-            "pending_fee_inr": 0.00,
             "language_pref": "gu",
         },
         {
@@ -538,8 +550,6 @@ async def seed_academic_hierarchy(session: AsyncSession, admin_id: int) -> None:
             "batch_id": batch.id if batch else None,
             "division_id": div_b.id if div_b else None,
             "lab_batch": "B1",
-            "attendance_pct": 84.00,
-            "pending_fee_inr": 45000.00,
             "language_pref": "hi",
         },
         {
@@ -554,8 +564,6 @@ async def seed_academic_hierarchy(session: AsyncSession, admin_id: int) -> None:
             "batch_id": batch.id if batch else None,
             "division_id": div_a.id if div_a else None,
             "lab_batch": "A1",
-            "attendance_pct": 92.00,
-            "pending_fee_inr": 0.00,
             "language_pref": "en",
         },
         {
@@ -570,8 +578,6 @@ async def seed_academic_hierarchy(session: AsyncSession, admin_id: int) -> None:
             "batch_id": None,
             "division_id": None,
             "lab_batch": None,
-            "attendance_pct": 72.00,
-            "pending_fee_inr": 12000.00,
             "language_pref": "hi",
         },
         {
@@ -586,8 +592,6 @@ async def seed_academic_hierarchy(session: AsyncSession, admin_id: int) -> None:
             "batch_id": None,
             "division_id": None,
             "lab_batch": None,
-            "attendance_pct": 95.00,
-            "pending_fee_inr": 0.00,
             "language_pref": "en",
         },
     ]
@@ -608,22 +612,20 @@ async def seed_academic_hierarchy(session: AsyncSession, admin_id: int) -> None:
                 batch_id=s_data["batch_id"],
                 division_id=s_data["division_id"],
                 lab_batch=s_data["lab_batch"],
-                attendance_pct=s_data["attendance_pct"],
-                pending_fee_inr=s_data["pending_fee_inr"],
                 language_pref=s_data["language_pref"],
                 is_active=True,
             )
             session.add(student)
             logger.info("Seeded Student: %s (%s)", s_data["name"], s_data["roll"])
         else:
+            existing_s.name = s_data["name"]
+            existing_s.phone = s_data["phone"]
             existing_s.institute_id = s_data["institute_id"]
             existing_s.department_id = s_data["department_id"]
             existing_s.program_id = s_data["program_id"]
             existing_s.batch_id = s_data["batch_id"]
             existing_s.division_id = s_data["division_id"]
             existing_s.lab_batch = s_data["lab_batch"]
-            existing_s.attendance_pct = s_data["attendance_pct"]
-            existing_s.pending_fee_inr = s_data["pending_fee_inr"]
             session.add(existing_s)
 
 

@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CallTask, CallLog } from '@/services/api';
 import { useAuth } from '@/lib/auth-context';
+import { formatPhoneNumber } from '@/lib/utils';
 import {
   getCallTranscript,
   hangupCall,
@@ -378,24 +379,24 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
 
               {/* Search Bar */}
               <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-mute" />
+                <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-mute" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by student name, roll number, or phone..."
-                  className="w-full pl-9 pr-3 h-8 rounded-lg border border-hairline-strong bg-white text-xs text-ink placeholder:text-mute focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                  className="w-full pl-9 pr-3 min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-lg border border-hairline-strong bg-white text-xs text-ink placeholder:text-mute focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                 />
               </div>
 
               {/* Status Filter Chips */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 {CALL_STATUS_FILTERS.map((f) => (
                   <button
                     key={f.id}
                     type="button"
                     onClick={() => setStatusFilter(f.id)}
-                    className={`text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${statusFilter === f.id
+                    className={`min-h-[36px] sm:min-h-[28px] text-[11px] font-medium px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${statusFilter === f.id
                         ? 'bg-primary text-white shadow-xs'
                         : 'bg-canvas-elevated hover:bg-canvas-elevated/80 text-body border border-hairline'
                       }`}
@@ -483,7 +484,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                       <div className="mt-2.5 pt-2 border-t border-hairline-subtle flex items-center justify-between text-[11px] font-mono">
                         <span className="text-mute tabular-nums flex items-center gap-1">
                           <Phone className="w-3 h-3 text-mute/70 shrink-0" />
-                          <span>{task.student_phone}</span>
+                          <span>{formatPhoneNumber(task.student_phone)}</span>
                         </span>
                         <span className="text-ink font-medium tabular-nums">
                           {isLive
@@ -540,9 +541,9 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                     <button
                       type="button"
                       onClick={() => setSelectedTaskId(null)}
-                      className="lg:hidden mb-3 inline-flex items-center gap-1.5 text-xs text-primary font-semibold"
+                      className="lg:hidden mb-3 min-h-[44px] px-3.5 py-2 rounded-xl bg-canvas-elevated hover:bg-canvas-elevated/80 inline-flex items-center gap-2 text-xs font-semibold text-primary transition-colors active:scale-98"
                     >
-                      <ArrowLeft className="w-3.5 h-3.5" /> Back to call directory
+                      <ArrowLeft className="w-4 h-4" /> Back to call directory
                     </button>
                   )}
 
@@ -575,7 +576,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                         <div className="flex flex-wrap items-center gap-y-1.5 gap-x-3 text-xs font-mono text-body mt-2 pt-1 border-t border-hairline/60">
                           <span className="flex items-center gap-1.5 text-ink font-medium">
                             <Phone className="w-3.5 h-3.5 text-mute" />
-                            <span className="tabular-nums">{selectedTask.student_phone}</span>
+                            <span className="tabular-nums">{formatPhoneNumber(selectedTask.student_phone)}</span>
                           </span>
                           {/* <span className="text-hairline-strong">•</span>
                           <span className="flex items-center gap-1.5 text-mute">
@@ -609,7 +610,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                     </div>
 
                     {/* Operational Control Buttons / Call Disposition Badge */}
-                    <div className="flex items-center gap-2 shrink-0 self-start xl:self-center">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 self-start xl:self-center">
                       {selectedTask.status === 'in_progress' ? (
                         <>
                           <Button
@@ -617,7 +618,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                             size="sm"
                             disabled={isTransferring}
                             onClick={() => handleTransfer(selectedTask)}
-                            className="h-8 rounded-full px-3.5 text-xs font-medium border-hairline hover:bg-canvas-elevated"
+                            className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-4 text-xs font-medium border-hairline hover:bg-canvas-elevated"
                           >
                             <PhoneForwarded className="w-3.5 h-3.5 mr-1.5 text-telemetry-cyan" />
                             {isTransferring ? 'Transferring...' : 'Transfer Desk'}
@@ -627,7 +628,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                             size="sm"
                             disabled={isHangingUp}
                             onClick={() => handleHangup(selectedTask)}
-                            className="h-8 rounded-full px-3.5 text-xs font-medium"
+                            className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-4 text-xs font-medium"
                           >
                             <PhoneOff className="w-3.5 h-3.5 mr-1.5" />
                             {isHangingUp ? 'Hanging up...' : 'Hang Up'}
@@ -639,7 +640,7 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                           size="sm"
                           disabled={isHangingUp}
                           onClick={() => handleHangup(selectedTask)}
-                          className="h-8 rounded-full px-3.5 text-xs font-medium"
+                          className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-4 text-xs font-medium"
                         >
                           <PhoneOff className="w-3.5 h-3.5 mr-1.5" />
                           Cancel Call
@@ -652,26 +653,26 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
                               variant="outline"
                               disabled={isRetrying}
                               onClick={() => handleManualRetry(selectedTask)}
-                              className="h-8 rounded-full px-3.5 text-xs font-medium border-primary/30 hover:border-primary hover:bg-primary/5 text-ink shadow-xs disabled:opacity-50"
+                              className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-4 text-xs font-medium border-primary/30 hover:border-primary hover:bg-primary/5 text-ink shadow-xs disabled:opacity-50"
                             >
                               <RotateCcw className={`w-3.5 h-3.5 mr-1.5 text-primary ${isRetrying ? 'animate-spin' : ''}`} />
                               {isRetrying ? 'Dialing...' : 'Re-dial Call'}
                             </Button>
                           )}
                           {selectedTask.status === 'completed' && (
-                            <Badge variant="outline" className="h-8 rounded-full px-3 text-xs font-mono text-emerald-700 bg-emerald-50 border-emerald-200 flex items-center gap-1.5">
+                            <Badge variant="outline" className="min-h-[36px] sm:h-8 rounded-full px-3 text-xs font-mono text-emerald-700 bg-emerald-50 border-emerald-200 flex items-center gap-1.5">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                               <span>Resolved • {selectedTask.duration_sec ?? 0}s</span>
                             </Badge>
                           )}
                           {selectedTask.status === 'pending' && (
-                            <Badge variant="outline" className="h-8 rounded-full px-3 text-xs font-mono text-amber-700 bg-amber-50 border-amber-200 flex items-center gap-1.5">
+                            <Badge variant="outline" className="min-h-[36px] sm:h-8 rounded-full px-3 text-xs font-mono text-amber-700 bg-amber-50 border-amber-200 flex items-center gap-1.5">
                               <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" />
                               <span>Queued for Dialing</span>
                             </Badge>
                           )}
                           {(selectedTask.status === 'failed' || selectedTask.status === 'busy' || selectedTask.status === 'no_answer') && (
-                            <Badge variant="outline" className="h-8 rounded-full px-3 text-xs font-mono text-rose-700 bg-rose-50 border-rose-200 flex items-center gap-1.5">
+                            <Badge variant="outline" className="min-h-[36px] sm:h-8 rounded-full px-3 text-xs font-mono text-rose-700 bg-rose-50 border-rose-200 flex items-center gap-1.5">
                               <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
                               <span>{getCallStatusLabel(selectedTask.status)}</span>
                             </Badge>

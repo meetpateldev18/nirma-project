@@ -411,8 +411,6 @@ export interface StudentSearchResult {
   program_code?: string | null;
   division_code?: string | null;
   lab_batch?: string | null;
-  attendance_pct?: number | null;
-  pending_fee_inr?: number | null;
 }
 
 // ==============================================================================

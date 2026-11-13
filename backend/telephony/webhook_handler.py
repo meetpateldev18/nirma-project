@@ -90,6 +90,55 @@ SILENCE_PROMPTS_TIER_3: Dict[str, str] = {
 # ------------------------------------------------------------------------------
 # XML Builders (Plivo XML & Twilio TwiML)
 # ------------------------------------------------------------------------------
+def _normalize_lang(language: Optional[str]) -> str:
+    """
+    Normalizes language codes and dialect tags into standard ISO keys ('en', 'hi', 'gu').
+
+    Ensures that dialect representations like 'en-IN', 'hi-IN', 'gu-IN', 'EN', 'HI', 'GU'
+    are consistently mapped to the base language code for prompt lookup and voice selection.
+
+    Args:
+        language: Input language string or None.
+
+    Returns:
+        str: Normalized ISO language code ('en', 'hi', or 'gu').
+    """
+    if not language:
+        return "en"
+    l = str(language).strip().lower()
+    if l.startswith("gu"):
+        return "gu"
+    if l.startswith("hi"):
+        return "hi"
+    return "en"
+
+
+def _safe_int(val: Any, default: int = 0) -> int:
+    """
+    Safely coerces any value (str, int, float, None) into a clean integer.
+
+    Prevents ValueError, TypeError, and FastAPI 422 Unprocessable Entity crashes
+    when telephony carriers, reverse tunnels, or manual test clients omit parameters
+    or pass empty strings, 'None', 'null', or non-numeric tokens.
+
+    Args:
+        val: Input candidate value.
+        default: Fallback integer if parsing fails or input is None/blank.
+
+    Returns:
+        int: Coerced integer value or default.
+    """
+    if val is None:
+        return default
+    try:
+        s = str(val).strip()
+        if not s or s.lower() in ("none", "null", "undefined", "nan"):
+            return default
+        return int(float(s))
+    except (ValueError, TypeError):
+        return default
+
+
 def _build_plivo_xml_response(
     audio_url: Optional[str] = None,
     action_url: Optional[str] = None,
@@ -143,35 +192,58 @@ def _build_twilio_xml_response(
     action_url: Optional[str] = None,
     redirect_url: Optional[str] = None,
     hangup: bool = False,
-    silence_seconds: int = 2,
+    silence_seconds: int = 5,
     language: str = "en",
 ) -> str:
     """
     Constructs valid TwiML XML response string for Twilio voice calls.
 
-    Prefers native Twilio Amazon Polly <Say> when say_text is available, avoiding
-    external MP3 download latency and Cloudflare tunnel fetch errors (e.g. HTTP 530).
+    Strictly enforces single voice persona across the entire call lifecycle:
+    - English ('en'): Amazon Polly 'Polly.Aditi' (language="en-IN")
+    - Hindi ('hi'): Amazon Polly 'Polly.Aditi' (language="hi-IN")
+    - Gujarati ('gu'): Google Cloud Gujarati Female ('Google.gu-IN-Standard-A', language="gu-IN")
+
+    Guarantees:
+    1. Zero voice switching: Turn 1 greeting, Turn 2+ conversational turns, fillers,
+       and silence reprompts all speak in the exact same voice persona.
+    2. Zero male fallback: Never passes unsupported neural voices (Polly.Kajal) or unsupported
+       languages to Polly, preventing Twilio's silent fallback to default 'man'.
+    3. Zero Cloudflare tunnel HTTP 530/524 latency: Prefers native carrier <Say> over <Play>.
+    4. Conversational <Gather>: Employs 5s silence timeout, auto speech-timeout,
+       actionOnEmptyResult="true", and fall-through redirect so silence escalation works reliably.
 
     Args:
-        audio_url: Optional static audio URL to play to the caller.
-        say_text: Spoken text synthesized directly via Twilio's native Amazon Polly voice.
+        audio_url: Optional static audio URL to play to the caller (used only if say_text is None).
+        say_text: Spoken text synthesized directly via Twilio's native voices.
         action_url: Webhook action URL for the <Gather> tag.
         redirect_url: Optional URL for <Redirect> directive when asynchronous continuation is required.
         hangup: If True, appends <Hangup/> directive.
         silence_seconds: Silence detection timeout in seconds (Twilio 'timeout' parameter).
-        language: Language code ('en', 'hi', 'gu') for Amazon Polly voice selection.
+        language: Language code ('en', 'hi', 'gu') for voice selection.
 
     Returns:
         str: Serialized TwiML XML document string.
     """
     vr = VoiceResponse()
+    lang_normalized = _normalize_lang(language)
 
-    if audio_url:
+    # Strictly prioritize native <Say> over <Play> to eliminate external MP3
+    # download latencies, prevent Cloudflare tunnel HTTP 530/524 timeouts, and ensure the
+    # caller hears the exact same voice persona from the opening greeting to the final hangup.
+    if say_text:
+        if lang_normalized == "gu":
+            # Amazon Polly does not support Gujarati ('gu-IN'). Passing Polly with gu-IN
+            # triggers Twilio error and falls back to default standard male voice ('man').
+            # We strictly use Google.gu-IN-Standard-A for native Gujarati female text-to-speech.
+            vr.say(say_text, voice="Google.gu-IN-Standard-A", language="gu-IN")
+        elif lang_normalized == "hi":
+            # Amazon Polly Aditi standard bilingual female voice fluent in Hindi
+            vr.say(say_text, voice="Polly.Aditi", language="hi-IN")
+        else:
+            # Amazon Polly Aditi standard bilingual female voice fluent in Indian English
+            vr.say(say_text, voice="Polly.Aditi", language="en-IN")
+    elif audio_url:
         vr.play(audio_url)
-    elif say_text:
-        voice_name = "Polly.Aditi" if language in ("en", "gu") else "Polly.Kajal"
-        lang_code = "en-IN" if language in ("en", "gu") else "hi-IN"
-        vr.say(say_text, voice=voice_name, language=lang_code)
 
     if hangup:
         vr.hangup()
@@ -186,7 +258,7 @@ def _build_twilio_xml_response(
             "hi": "hi-IN",
             "en": "en-IN",
         }
-        speech_lang = speech_lang_map.get(language.lower() if language else "en", "en-IN")
+        speech_lang = speech_lang_map.get(lang_normalized, "en-IN")
         vr.gather(
             input="speech",
             action=action_url,
@@ -194,7 +266,11 @@ def _build_twilio_xml_response(
             speech_timeout="auto",
             language=speech_lang,
             method="POST",
+            profanity_filter=False,
+            action_on_empty_result=True,
         )
+        # Safety net: If carrier times out without posting empty result, redirect to action_url
+        vr.redirect(action_url, method="POST")
 
     return str(vr)
 
@@ -233,7 +309,7 @@ def _build_carrier_xml(
 # Core Telephony State Machine Operations
 # ------------------------------------------------------------------------------
 async def _execute_call_answer(
-    task_id: Optional[int],
+    task_id: Optional[Any],
     call_uuid: str,
     from_number: str,
     to_number: str,
@@ -246,7 +322,8 @@ async def _execute_call_answer(
     Sets status to 'in_progress', synthesizes opening greeting, initializes Redis
     call session with TTL=600s, and emits carrier-specific XML.
     """
-    task_id_int = task_id or 0
+    task_id_int = _safe_int(task_id)
+    language = "en"
     logger.info(
         "[%s] Answer Webhook -> TaskID: %d, CallUUID/SID: %s, From: %s, To: %s",
         carrier.upper(),
@@ -256,148 +333,177 @@ async def _execute_call_answer(
         to_number,
     )
 
-    # 1. Fetch task and script details (Check fast Redis cache first for <50ms PSTN response)
-    meta = None
-    if task_id_int > 0:
-        try:
-            cached_meta_raw = await redis_client.get(f"call:task_meta:{task_id_int}")
-            if cached_meta_raw:
-                meta = json.loads(cached_meta_raw)
-        except Exception as e:
-            logger.warning("Fast-cache read warning: %s", e)
-
-    if meta:
-        opening_text = meta["opening_message"]
-        language = meta.get("language", "en")
-        system_prompt = meta.get("system_prompt", "")
-        opening_audio_url = meta.get("opening_audio_url")
-
-        # Update database task record asynchronously in background so DB latency never delays carrier
-        async def _bg_update_task():
-            try:
-                async with async_session_scope() as session:
-                    res = await session.execute(select(CallTask).where(CallTask.id == task_id_int))
-                    t = res.scalar_one_or_none()
-                    if t:
-                        t.status = "in_progress"
-                        t.plivo_uuid = call_uuid
-                        t.answered_at = t.answered_at or utc_now()
-                        await session.commit()
-            except Exception as bg_err:
-                logger.warning("Background task status update warning: %s", bg_err)
-
-        asyncio.create_task(_bg_update_task())
-    else:
-        # Fallback to database query if not in fast cache
-        row = None
+    try:
+        # 1. Fetch task and script details (Check fast Redis cache first for <50ms PSTN response)
+        meta = None
         if task_id_int > 0:
-            async with async_session_scope() as session:
-                result = await session.execute(
-                    select(CallTask, CallScript)
-                    .join(CallScript, CallTask.script_id == CallScript.id)
-                    .where(CallTask.id == task_id_int)
-                )
-                row = result.first()
-                if not row:
-                    logger.error(
-                        "[%s] CallTask ID %d not found in database for answer webhook.",
-                        carrier.upper(),
-                        task_id_int,
-                    )
-                    xml_resp = _build_carrier_xml(carrier=carrier, hangup=True)
-                    return Response(content=xml_resp, media_type="application/xml")
+            try:
+                cached_meta_raw = await redis_client.get(f"call:task_meta:{task_id_int}")
+                if cached_meta_raw:
+                    meta = json.loads(cached_meta_raw)
+            except Exception as e:
+                logger.warning("Fast-cache read warning: %s", e)
 
-                task, script = row
-                task.status = "in_progress"
-                task.plivo_uuid = call_uuid  # Stores carrier CallUUID / CallSid
-                task.answered_at = utc_now()
-                task.duration_sec = 0
+        if meta:
+            opening_text = meta["opening_message"]
+            language = _normalize_lang(meta.get("language", "en"))
+            system_prompt = meta.get("system_prompt", "")
+            opening_audio_url = meta.get("opening_audio_url")
 
-        if row:
-            task, script = row
-            opening_text = script.opening_message
-            language = script.language or "en"
-            system_prompt = script.system_prompt
+            # Update database task record asynchronously in background so DB latency never delays carrier
+            async def _bg_update_task():
+                try:
+                    async with async_session_scope() as session:
+                        res = await session.execute(select(CallTask).where(CallTask.id == task_id_int))
+                        t = res.scalar_one_or_none()
+                        if t:
+                            t.status = "in_progress"
+                            t.plivo_uuid = call_uuid
+                            t.answered_at = t.answered_at or utc_now()
+                            await session.commit()
+                except Exception as bg_err:
+                    logger.warning("Background task status update warning: %s", bg_err)
+
+            asyncio.create_task(_bg_update_task())
         else:
-            logger.info("[%s] Inbound ad-hoc test call detected (CallUUID: %s). Using dynamic Gemini voice assistant.", carrier.upper(), call_uuid)
-            opening_text = "Namaste! This is the Nirma University AI voice assistant. How may I assist you with your academic inquiries today?"
-            language = "en"
-            system_prompt = (
-                "You are the official, polite AI voice representative of Nirma University. "
-                "You assist students, parents, and visitors with inquiries regarding admissions, examinations, "
-                "academic calendars, fee notifications, and official campus notices. "
-                "Stay strictly within the scope of Nirma University academic policies and notices. "
-                "If asked about anything outside Nirma University, politely explain you can only assist with university inquiries. "
-                "Answer in 1 to 2 short sentences (strictly under 30 words). Never use markdown, bullet points, or lists."
-            )
+            # Fallback to database query if not in fast cache
+            row = None
+            if task_id_int > 0:
+                async with async_session_scope() as session:
+                    result = await session.execute(
+                        select(CallTask, CallScript)
+                        .join(CallScript, CallTask.script_id == CallScript.id)
+                        .where(CallTask.id == task_id_int)
+                    )
+                    row = result.first()
+                    if not row:
+                        logger.error(
+                            "[%s] CallTask ID %d not found in database for answer webhook.",
+                            carrier.upper(),
+                            task_id_int,
+                        )
+                        xml_resp = _build_carrier_xml(carrier=carrier, hangup=True)
+                        return Response(content=xml_resp, media_type="application/xml")
 
-    # 2. Synthesize initial opening message audio URL via TTS (0ms if pre-warmed)
-    if "opening_audio_url" not in locals() or not opening_audio_url:
-        opening_audio_url = await ai_pipeline.tts.synthesize(text=opening_text, language=language)
+                    task, script = row
+                    task.status = "in_progress"
+                    task.plivo_uuid = call_uuid  # Stores carrier CallUUID / CallSid
+                    task.answered_at = utc_now()
+                    task.duration_sec = 0
 
-    # 3. Store in-flight session context in Redis (TTL=600 seconds)
-    session_key = f"call:session:{call_uuid}"
-    session_data = {
-        "task_id": str(task_id_int),
-        "call_uuid": call_uuid,
-        "carrier": carrier,
-        "system_prompt": system_prompt,
-        "opening_message": opening_text,
-        "lang": language,
-        "turn_count": "1",
-        "history": json.dumps([{"role": "assistant", "content": opening_text, "timestamp": time.strftime("%H:%M:%S")}]),
-        "start_time": str(time.time()),
-    }
+            if row:
+                task, script = row
+                opening_text = script.opening_message
+                language = _normalize_lang(script.language or "en")
+                system_prompt = script.system_prompt
+            else:
+                logger.info("[%s] Inbound ad-hoc test call detected (CallUUID: %s). Using dynamic Gemini voice assistant.", carrier.upper(), call_uuid)
+                opening_text = "Namaste! This is the Nirma University AI voice assistant. How may I assist you with your academic inquiries today?"
+                language = "en"
+                system_prompt = (
+                    "You are the official, polite AI voice representative of Nirma University. "
+                    "You assist students, parents, and visitors with inquiries regarding admissions, examinations, "
+                    "academic calendars, fee notifications, and official campus notices. "
+                    "Stay strictly within the scope of Nirma University academic policies and notices. "
+                    "If asked about anything outside Nirma University, politely explain you can only assist with university inquiries. "
+                    "Answer in 1 to 2 short sentences (strictly under 30 words). Never use markdown, bullet points, or lists."
+                )
 
-    # Batch session initialization and TTL into a single atomic network round-trip
-    async with redis_client.pipeline(transaction=True) as pipe:
-        pipe.hset(session_key, mapping=session_data)
-        pipe.expire(session_key, 600)  # Mandatory 600s TTL
-        await pipe.execute()
-    logger.info("Initialized Redis call session key '%s' with TTL=600s (carrier: %s)", session_key, carrier)
+        # 2. Synthesize initial opening message audio URL via TTS
+        # Twilio in all languages uses native <Say> directly (Polly.Aditi for en/hi, Google.gu-IN-Standard-A for gu),
+        # saving synthesis latency, eliminating MP3 fetch failures, and guaranteeing 100% voice identicalness.
+        # Plivo uses synthesized Google TTS audio playback.
+        if carrier.lower() != "twilio":
+            if "opening_audio_url" not in locals() or not opening_audio_url:
+                opening_audio_url = await ai_pipeline.tts.synthesize(text=opening_text, language=language)
+        else:
+            opening_audio_url = None
 
-    # 4. Broadcast live status and opening message turn update to WebSocket clients
-    await ws_manager.broadcast(
-        "call_status",
-        {
-            "task_id": task_id_int,
+        # 3. Store in-flight session context in Redis (TTL=600 seconds)
+        session_key = f"call:session:{call_uuid}"
+        session_data = {
+            "task_id": str(task_id_int),
             "call_uuid": call_uuid,
             "carrier": carrier,
-            "status": "in_progress",
+            "system_prompt": system_prompt,
+            "opening_message": opening_text,
             "lang": language,
-            "from_number": from_number,
-            "to_number": to_number,
-        },
-    )
-    await ws_manager.broadcast(
-        "transcript_turn",
-        {
-            "task_id": task_id_int,
-            "call_uuid": call_uuid,
-            "carrier": carrier,
-            "turn": 1,
-            "user_transcript": "",
-            "assistant_reply": opening_text,
-            "latency_ms": 0,
-        },
-    )
+            "turn_count": "1",
+            "history": json.dumps([{"role": "assistant", "content": opening_text, "timestamp": time.strftime("%H:%M:%S")}]),
+            "start_time": str(time.time()),
+        }
 
-    # 5. Construct carrier-specific XML response
-    input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id_int}")
-    xml_content = _build_carrier_xml(
-        carrier=carrier,
-        audio_url=opening_audio_url,
-        say_text=opening_text,
-        action_url=input_action_url,
-        silence_seconds=4,
-        language=language,
-    )
+        # Batch session initialization and TTL into a single atomic network round-trip
+        async with redis_client.pipeline(transaction=True) as pipe:
+            pipe.hset(session_key, mapping=session_data)
+            pipe.expire(session_key, 600)  # Mandatory 600s TTL
+            await pipe.execute()
+        logger.info("Initialized Redis call session key '%s' with TTL=600s (carrier: %s)", session_key, carrier)
 
-    return Response(content=xml_content, media_type="application/xml")
+        # 4. Broadcast live status and opening message turn update to WebSocket clients
+        await ws_manager.broadcast(
+            "call_status",
+            {
+                "task_id": task_id_int,
+                "call_uuid": call_uuid,
+                "carrier": carrier,
+                "status": "in_progress",
+                "lang": language,
+                "from_number": from_number,
+                "to_number": to_number,
+            },
+        )
+        await ws_manager.broadcast(
+            "transcript_turn",
+            {
+                "task_id": task_id_int,
+                "call_uuid": call_uuid,
+                "carrier": carrier,
+                "turn": 1,
+                "user_transcript": "",
+                "assistant_reply": opening_text,
+                "latency_ms": 0,
+            },
+        )
+
+        # 5. Construct carrier-specific XML response
+        input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id_int}")
+        xml_content = _build_carrier_xml(
+            carrier=carrier,
+            audio_url=opening_audio_url,
+            say_text=opening_text,
+            action_url=input_action_url,
+            silence_seconds=5,
+            language=language,
+        )
+
+        return Response(content=xml_content, media_type="application/xml")
+    except Exception as exc:
+        logger.error(
+            "[%s] Answer Webhook Exception on CallUUID %s: %s",
+            carrier.upper(),
+            call_uuid,
+            exc,
+            exc_info=True,
+        )
+        fallback_msg = (
+            "નમસ્તે, નિર્મા યુનિવર્સિટી AI સહાયકમાં આપનું સ્વાગત છે. હું આપને કેવી રીતે મદદ કરી શકું?" if language == "gu"
+            else "नमस्ते! निरमा विश्वविद्यालय के एआई वॉयस असिस्टेंट में आपका स्वागत है। मैं आपकी क्या सहायता कर सकता हूँ?" if language == "hi"
+            else "Namaste! This is the Nirma University AI voice assistant. How may I assist you with your academic inquiries today?"
+        )
+        input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id_int}")
+        xml_content = _build_carrier_xml(
+            carrier=carrier,
+            say_text=fallback_msg,
+            action_url=input_action_url,
+            silence_seconds=5,
+            language=language,
+        )
+        return Response(content=xml_content, media_type="application/xml")
 
 
 async def _execute_call_input(
-    task_id: int,
+    task_id: Optional[Any],
     call_uuid: str,
     raw_record_url: Optional[str] = None,
     speech_result: Optional[str] = None,
@@ -410,6 +516,8 @@ async def _execute_call_input(
     through the AI cascade (STT -> LLM -> TTS), implements the 3-tier silence escalation ladder
     on empty speech, and applies the 2.0s fast-path / asynchronous filler redirect loop on slow LLM.
     """
+    task_id_int = _safe_int(task_id)
+    lang = "en"
     # In Twilio, ensure URL points directly to .wav container if no file extension is present
     actual_record_url = raw_record_url
     if actual_record_url and carrier.lower() == "twilio" and not actual_record_url.endswith((".wav", ".mp3")):
@@ -418,7 +526,7 @@ async def _execute_call_input(
     logger.info(
         "[%s] Input Webhook -> TaskID: %d, CallUUID: %s, SpeechResult: %s, RecordURL: %s",
         carrier.upper(),
-        task_id,
+        task_id_int,
         call_uuid,
         speech_result,
         actual_record_url,
@@ -449,11 +557,11 @@ async def _execute_call_input(
             xml_resp = _build_carrier_xml(carrier=carrier, hangup=True)
             return Response(content=xml_resp, media_type="application/xml")
 
-        lang = session_data.get("lang", "en")
+        lang = _normalize_lang(session_data.get("lang", "en"))
         history_list = json.loads(session_data.get("history", "[]"))
         turn_count = int(session_data.get("turn_count", "1")) + 1
         system_prompt = session_data.get("system_prompt", "")
-        input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id}")
+        input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id_int}")
 
         has_speech = bool(speech_result and speech_result.strip())
         has_recording = bool(actual_record_url and actual_record_url.strip())
@@ -469,8 +577,16 @@ async def _execute_call_input(
                 logger.info("[%s] Silence detected on CallUUID %s (Tier 1 Reprompt)", carrier.upper(), call_uuid)
                 await redis_client.hset(session_key, mapping={"silence_count": "1"})
                 prompt_text = SILENCE_PROMPTS_TIER_1.get(lang, SILENCE_PROMPTS_TIER_1["en"])
+                silence_audio_url = None
+                if carrier.lower() != "twilio":
+                    try:
+                        silence_audio_url = await ai_pipeline.tts.synthesize(text=prompt_text, language=lang)
+                    except Exception as tts_err:
+                        logger.warning("Tier 1 silence TTS synthesis failed (%s): %s", lang, tts_err)
+
                 xml_content = _build_carrier_xml(
                     carrier=carrier,
+                    audio_url=silence_audio_url,
                     say_text=prompt_text,
                     action_url=input_action_url,
                     silence_seconds=5,
@@ -483,8 +599,16 @@ async def _execute_call_input(
                 logger.info("[%s] Silence detected on CallUUID %s (Tier 2 Warning)", carrier.upper(), call_uuid)
                 await redis_client.hset(session_key, mapping={"silence_count": "2"})
                 prompt_text = SILENCE_PROMPTS_TIER_2.get(lang, SILENCE_PROMPTS_TIER_2["en"])
+                silence_audio_url = None
+                if carrier.lower() != "twilio":
+                    try:
+                        silence_audio_url = await ai_pipeline.tts.synthesize(text=prompt_text, language=lang)
+                    except Exception as tts_err:
+                        logger.warning("Tier 2 silence TTS synthesis failed (%s): %s", lang, tts_err)
+
                 xml_content = _build_carrier_xml(
                     carrier=carrier,
+                    audio_url=silence_audio_url,
                     say_text=prompt_text,
                     action_url=input_action_url,
                     silence_seconds=4,
@@ -496,12 +620,19 @@ async def _execute_call_input(
                 # Tier 3: Graceful Disconnect
                 logger.info("[%s] Silence limit reached on CallUUID %s (Tier 3 Disconnect)", carrier.upper(), call_uuid)
                 farewell_text = SILENCE_PROMPTS_TIER_3.get(lang, SILENCE_PROMPTS_TIER_3["en"])
+                farewell_audio_url = None
+                if carrier.lower() != "twilio":
+                    try:
+                        farewell_audio_url = await ai_pipeline.tts.synthesize(text=farewell_text, language=lang)
+                    except Exception as tts_err:
+                        logger.warning("Tier 3 silence TTS synthesis failed (%s): %s", lang, tts_err)
+
                 start_time_val = float(session_data.get("start_time", time.time()))
                 duration_sec = max(1, int(time.time() - start_time_val))
-                if task_id:
+                if task_id_int > 0:
                     asyncio.create_task(
                         _execute_call_hangup(
-                            task_id=task_id,
+                            task_id=task_id_int,
                             call_uuid=call_uuid,
                             duration=duration_sec,
                             carrier=carrier,
@@ -510,6 +641,7 @@ async def _execute_call_input(
                     )
                 xml_content = _build_carrier_xml(
                     carrier=carrier,
+                    audio_url=farewell_audio_url,
                     say_text=farewell_text,
                     hangup=True,
                     language=lang,
@@ -530,7 +662,7 @@ async def _execute_call_input(
             await ws_manager.broadcast(
                 "transcript_turn",
                 {
-                    "task_id": task_id,
+                    "task_id": task_id_int,
                     "call_uuid": call_uuid,
                     "carrier": carrier,
                     "turn": turn_count,
@@ -561,7 +693,7 @@ async def _execute_call_input(
                 fast_path = False
 
             if not fast_path:
-                # Slow-path: LLM takes > 2.0s. Do NOT let Twilio webhook time out!
+                # Slow-path: LLM takes > 3.5s. Do NOT let Twilio webhook time out!
                 # Schedule background worker to save response in Redis upon completion
                 async def _save_pending_turn_result(task_ref, cid, turn_num, u_text):
                     try:
@@ -571,9 +703,9 @@ async def _execute_call_input(
                     except Exception as err:
                         logger.error("[%s] Background LLM generation failed for %s turn %d: %s", carrier.upper(), cid, turn_num, err)
                         fallback_reply = (
-                            "હું આપની વાત સમજી ગયો છું. આગળનો પ્રશ્ન પૂછો." if lang == "gu"
-                            else ("मैं आपकी बात समझ गया हूँ। कृपया आगे पूछें।" if lang == "hi"
-                            else "I understand your query. Please ask your next question regarding Nirma University.")
+                            "હું નિર્મા યુનિવર્સિટીના રેકોર્ડમાંથી આપની માહિતી ચકાસી રહ્યો છું. શું આપનો ચોક્કસ પ્રશ્ન ફરીથી જણાવી શકશો?" if lang == "gu"
+                            else ("मैं निरमा विश्वविद्यालय के सिस्टम से आपकी जानकारी देख रहा हूँ। क्या आप अपना प्रश्न दोबारा बता सकते हैं?" if lang == "hi"
+                            else "I understand your query. Could you please specify your question in more detail?")
                         )
                         payload = {"status": "ready", "assistant_reply": fallback_reply, "user_transcript": u_text, "llm_ms": 2500}
                     await redis_client.set(f"call:pending_turn:{cid}:{turn_num}", json.dumps(payload), ex=120)
@@ -599,8 +731,9 @@ async def _execute_call_input(
                 )
 
                 # Output localized filler phrase + <Redirect> to continuation endpoint
+                # For Twilio, native Google.gu-IN-Standard-A or Polly.Aditi synthesizes instantly in TwiML
                 filler_text = FILLER_PROMPTS.get(lang, FILLER_PROMPTS["en"])
-                continue_url = settings.build_webhook_url(f"/webhook/{carrier}/continue?task_id={task_id}&call_uuid={call_uuid}&turn={turn_count}")
+                continue_url = settings.build_webhook_url(f"/webhook/{carrier}/continue?task_id={task_id_int}&call_uuid={call_uuid}&turn={turn_count}")
                 xml_content = _build_carrier_xml(
                     carrier=carrier,
                     say_text=filler_text,
@@ -610,7 +743,7 @@ async def _execute_call_input(
                 return Response(content=xml_content, media_type="application/xml")
 
             response_audio_url = None
-            if lang == "gu" or carrier != "twilio":
+            if carrier.lower() != "twilio":
                 try:
                     response_audio_url = await ai_pipeline.tts.synthesize(text=assistant_reply, language=lang)
                 except Exception as tts_err:
@@ -618,7 +751,7 @@ async def _execute_call_input(
         else:
             # Audio recording fallback path (e.g. Plivo audio upload)
             context: Dict[str, Any] = {
-                "task_id": task_id,
+                "task_id": task_id_int,
                 "call_uuid": call_uuid,
                 "carrier": carrier,
                 "system_prompt": system_prompt,
@@ -673,11 +806,11 @@ async def _execute_call_input(
     assistant_said_bye = any(kw in assistant_reply.lower() for kw in goodbye_keywords)
     should_hangup = turn_count >= 10 or user_said_bye or assistant_said_bye
 
-    if should_hangup and task_id:
+    if should_hangup and task_id_int > 0:
         start_time_val = float(session_data.get("start_time", time.time()))
         duration_sec = max(1, int(time.time() - start_time_val))
         asyncio.create_task(_execute_call_hangup(
-            task_id=task_id,
+            task_id=task_id_int,
             call_uuid=call_uuid,
             duration=duration_sec,
             carrier=carrier,
@@ -690,7 +823,7 @@ async def _execute_call_input(
         say_text=assistant_reply,
         action_url=input_action_url if not should_hangup else None,
         hangup=should_hangup,
-        silence_seconds=4,
+        silence_seconds=5,
         language=lang,
     )
 
@@ -698,7 +831,7 @@ async def _execute_call_input(
     await ws_manager.broadcast(
         "transcript_turn",
         {
-            "task_id": task_id,
+            "task_id": task_id_int,
             "call_uuid": call_uuid,
             "carrier": carrier,
             "turn": turn_count,
@@ -712,9 +845,9 @@ async def _execute_call_input(
 
 
 async def _execute_call_continue(
-    task_id: int,
+    task_id: Optional[Any],
     call_uuid: str,
-    turn: int,
+    turn: Optional[Any] = 1,
     carrier: str = "twilio",
 ) -> Response:
     """
@@ -724,144 +857,171 @@ async def _execute_call_continue(
     to Redis, evaluates call termination criteria, and outputs carrier XML with the
     final conversational response and the next <Gather> directive.
     """
+    task_id_int = _safe_int(task_id)
+    turn_int = _safe_int(turn, default=1)
+    lang = "en"
     logger.info(
         "[%s] Continue Webhook -> TaskID: %d, CallUUID: %s, Turn: %d",
         carrier.upper(),
-        task_id,
+        task_id_int,
         call_uuid,
-        turn,
+        turn_int,
     )
 
-    session_key = f"call:session:{call_uuid}"
-    session_data = await redis_client.hgetall(session_key)
+    try:
+        session_key = f"call:session:{call_uuid}"
+        session_data = await redis_client.hgetall(session_key)
 
-    if not session_data:
-        logger.warning(
-            "[%s] Redis session key '%s' expired or missing during continue. Terminating call.",
-            carrier.upper(),
-            session_key,
-        )
-        xml_resp = _build_carrier_xml(carrier=carrier, hangup=True)
-        return Response(content=xml_resp, media_type="application/xml")
+        if not session_data:
+            logger.warning(
+                "[%s] Redis session key '%s' expired or missing during continue. Terminating call.",
+                carrier.upper(),
+                session_key,
+            )
+            xml_resp = _build_carrier_xml(carrier=carrier, hangup=True)
+            return Response(content=xml_resp, media_type="application/xml")
 
-    lang = session_data.get("lang", "en")
-    history_list = json.loads(session_data.get("history", "[]"))
+        lang = _normalize_lang(session_data.get("lang", "en"))
+        history_list = json.loads(session_data.get("history", "[]"))
 
-    # Poll Redis key for up to 3.5s for the background LLM task to finish
-    pending_key = f"call:pending_turn:{call_uuid}:{turn}"
-    pending_payload = None
-    for _ in range(35):
-        raw = await redis_client.get(pending_key)
-        if raw:
-            try:
-                pending_payload = json.loads(raw)
-                break
-            except Exception:
-                pass
-        await asyncio.sleep(0.1)
+        # Poll Redis key for up to 3.0s for the background LLM task to finish
+        effective_turn = turn_int or int(session_data.get("pending_turn") or session_data.get("turn_count") or 1)
+        pending_key = f"call:pending_turn:{call_uuid}:{effective_turn}"
+        pending_payload = None
+        for _ in range(30):
+            raw = await redis_client.get(pending_key)
+            if raw:
+                try:
+                    pending_payload = json.loads(raw)
+                    break
+                except Exception:
+                    pass
+            await asyncio.sleep(0.1)
 
-    if pending_payload and "assistant_reply" in pending_payload:
-        assistant_reply = pending_payload["assistant_reply"]
-        user_transcript = pending_payload.get("user_transcript", "")
-        turn_latency = pending_payload.get("llm_ms", 2200)
-    else:
-        # Fallback if LLM stalled completely past continue deadline
-        logger.warning("[%s] Background LLM exceeded continue deadline for %s turn %d. Using fallback.", carrier.upper(), call_uuid, turn)
-        user_transcript = session_data.get("last_user_transcript", "")
-        if lang == "gu":
-            assistant_reply = "હું આપની વાત સમજી ગયો છું. કૃપા કરીને આપનો આગળનો પ્રશ્ન પૂછો."
-        elif lang == "hi":
-            assistant_reply = "मैं आपकी बात समझ गया हूँ। कृपया अपना अगला प्रश्न पूछें।"
+        if pending_payload and "assistant_reply" in pending_payload:
+            assistant_reply = pending_payload["assistant_reply"]
+            user_transcript = pending_payload.get("user_transcript", "")
+            turn_latency = pending_payload.get("llm_ms", 2200)
         else:
-            assistant_reply = "I understand your query. Please ask your next question regarding Nirma University."
-        turn_latency = 3500
+            # Fallback if LLM stalled completely past continue deadline
+            logger.warning("[%s] Background LLM exceeded continue deadline for %s turn %d. Using fallback.", carrier.upper(), call_uuid, turn_int)
+            user_transcript = session_data.get("last_user_transcript", "")
+            if lang == "gu":
+                assistant_reply = "હું નિર્મા યુનિવર્સિટીના રેકોર્ડમાંથી આપની માહિતી ચકાસી રહ્યો છું. શું આપનો ચોક્કસ પ્રશ્ન ફરીથી જણાવી શકશો?"
+            elif lang == "hi":
+                assistant_reply = "मैं निरमा विश्वविद्यालय के सिस्टम से आपकी जानकारी देख रहा हूँ। क्या आप अपना प्रश्न दोबारा बता सकते हैं?"
+            else:
+                assistant_reply = "I understand your query regarding Nirma University. Could you please specify your question in more detail?"
+            turn_latency = 3500
 
-    # Clean up pending key
-    await redis_client.delete(pending_key)
+        # Clean up pending key
+        await redis_client.delete(pending_key)
 
-    # Append to history and update turn count in Redis
-    turn_time_str = time.strftime("%H:%M:%S")
-    if user_transcript and (not history_list or history_list[-1].get("content") != user_transcript):
-        history_list.append({"role": "user", "content": user_transcript, "timestamp": turn_time_str})
-    history_list.append({
-        "role": "assistant",
-        "content": assistant_reply,
-        "timestamp": turn_time_str,
-        "latency_ms": turn_latency,
-    })
+        # Append to history and update turn count in Redis
+        turn_time_str = time.strftime("%H:%M:%S")
+        if user_transcript and (not history_list or history_list[-1].get("content") != user_transcript):
+            history_list.append({"role": "user", "content": user_transcript, "timestamp": turn_time_str})
+        history_list.append({
+            "role": "assistant",
+            "content": assistant_reply,
+            "timestamp": turn_time_str,
+            "latency_ms": turn_latency,
+        })
 
-    async with redis_client.pipeline(transaction=True) as pipe:
-        pipe.hset(
-            session_key,
-            mapping={
-                "history": json.dumps(history_list),
-                "turn_count": str(turn),
-                "silence_count": "0",
-                "pending_turn": "",
-                f"pending_status:{turn}": "completed",
-                f"pending_response:{turn}": assistant_reply,
+        async with redis_client.pipeline(transaction=True) as pipe:
+            pipe.hset(
+                session_key,
+                mapping={
+                    "history": json.dumps(history_list),
+                    "turn_count": str(turn_int),
+                    "silence_count": "0",
+                    "pending_turn": "",
+                    f"pending_status:{turn_int}": "completed",
+                    f"pending_response:{turn_int}": assistant_reply,
+                },
+            )
+            pipe.expire(session_key, 600)
+            await pipe.execute()
+
+        # Check goodbye / termination criteria
+        goodbye_keywords = [
+            "goodbye", "dhanyavaad", "alvida", "thank you", "thanks", "bye",
+            "આભાર", "ધન્યવાદ", "થેન્ક્યુ", "આવજો", "શુક્રિયા"
+        ]
+        user_said_bye = any(kw in user_transcript.lower() for kw in goodbye_keywords) if user_transcript else False
+        assistant_said_bye = any(kw in assistant_reply.lower() for kw in goodbye_keywords)
+        should_hangup = turn_int >= 10 or user_said_bye or assistant_said_bye
+
+        if should_hangup and task_id_int > 0:
+            start_time_val = float(session_data.get("start_time", time.time()))
+            duration_sec = max(1, int(time.time() - start_time_val))
+            asyncio.create_task(_execute_call_hangup(
+                task_id=task_id_int,
+                call_uuid=call_uuid,
+                duration=duration_sec,
+                carrier=carrier,
+                call_status="completed",
+            ))
+
+        response_audio_url = None
+        if carrier.lower() != "twilio":
+            try:
+                response_audio_url = await ai_pipeline.tts.synthesize(text=assistant_reply, language=lang)
+            except Exception as tts_err:
+                logger.warning("Continue turn TTS synthesis failed (%s): %s", lang, tts_err)
+
+        input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id_int}")
+        xml_content = _build_carrier_xml(
+            carrier=carrier,
+            audio_url=response_audio_url,
+            say_text=assistant_reply,
+            action_url=input_action_url if not should_hangup else None,
+            hangup=should_hangup,
+            silence_seconds=5,
+            language=lang,
+        )
+
+        # Broadcast turn dialogue and latency metrics to connected dashboard operators
+        await ws_manager.broadcast(
+            "transcript_turn",
+            {
+                "task_id": task_id_int,
+                "call_uuid": call_uuid,
+                "carrier": carrier,
+                "turn": turn_int,
+                "user_transcript": user_transcript,
+                "assistant_reply": assistant_reply,
+                "latency_ms": turn_latency,
             },
         )
-        pipe.expire(session_key, 600)
-        await pipe.execute()
 
-    # Check goodbye / termination criteria
-    goodbye_keywords = [
-        "goodbye", "dhanyavaad", "alvida", "thank you", "thanks", "bye",
-        "આભાર", "ધન્યવાદ", "થેન્ક્યુ", "આવજો", "શુક્રિયા"
-    ]
-    user_said_bye = any(kw in user_transcript.lower() for kw in goodbye_keywords) if user_transcript else False
-    assistant_said_bye = any(kw in assistant_reply.lower() for kw in goodbye_keywords)
-    should_hangup = turn >= 10 or user_said_bye or assistant_said_bye
-
-    if should_hangup and task_id:
-        start_time_val = float(session_data.get("start_time", time.time()))
-        duration_sec = max(1, int(time.time() - start_time_val))
-        asyncio.create_task(_execute_call_hangup(
-            task_id=task_id,
-            call_uuid=call_uuid,
-            duration=duration_sec,
+        return Response(content=xml_content, media_type="application/xml")
+    except Exception as exc:
+        logger.error(
+            "[%s] Continue Webhook Exception on CallUUID %s: %s",
+            carrier.upper(),
+            call_uuid,
+            exc,
+            exc_info=True,
+        )
+        fallback_reply = (
+            "હું નિર્મા યુનિવર્સિટીના રેકોર્ડમાંથી આપની માહિતી ચકાસી રહ્યો છું. શું આપનો ચોક્કસ પ્રશ્ન ફરીથી જણાવી શકશો?" if lang == "gu"
+            else "मैं निरमा विश्वविद्यालय के सिस्टम से आपकी जानकारी देख रहा हूँ। क्या आप अपना प्रश्न दोबारा बता सकते हैं?" if lang == "hi"
+            else "I understand your query regarding Nirma University. Could you please specify your question in more detail?"
+        )
+        input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id_int}")
+        xml_content = _build_carrier_xml(
             carrier=carrier,
-            call_status="completed",
-        ))
-
-    response_audio_url = None
-    if lang == "gu" or carrier != "twilio":
-        try:
-            response_audio_url = await ai_pipeline.tts.synthesize(text=assistant_reply, language=lang)
-        except Exception as tts_err:
-            logger.warning("Continue turn TTS synthesis failed (%s): %s", lang, tts_err)
-
-    input_action_url = settings.build_webhook_url(f"/webhook/{carrier}/input?task_id={task_id}")
-    xml_content = _build_carrier_xml(
-        carrier=carrier,
-        audio_url=response_audio_url,
-        say_text=assistant_reply,
-        action_url=input_action_url if not should_hangup else None,
-        hangup=should_hangup,
-        silence_seconds=4,
-        language=lang,
-    )
-
-    # Broadcast turn dialogue and latency metrics to connected dashboard operators
-    await ws_manager.broadcast(
-        "transcript_turn",
-        {
-            "task_id": task_id,
-            "call_uuid": call_uuid,
-            "carrier": carrier,
-            "turn": turn,
-            "user_transcript": user_transcript,
-            "assistant_reply": assistant_reply,
-            "latency_ms": turn_latency,
-        },
-    )
-
-    return Response(content=xml_content, media_type="application/xml")
+            say_text=fallback_reply,
+            action_url=input_action_url,
+            silence_seconds=5,
+            language=lang,
+        )
+        return Response(content=xml_content, media_type="application/xml")
 
 
 async def _execute_call_hangup(
-    task_id: int,
+    task_id: Optional[Any],
     call_uuid: str,
     duration: int,
     carrier: str,
@@ -873,99 +1033,110 @@ async def _execute_call_hangup(
     Updates task duration and outcome in PostgreSQL, persists the conversational
     transcript in CallLog, removes Redis in-flight session, and broadcasts completion.
     """
+    task_id_int = _safe_int(task_id)
     logger.info(
         "[%s] Hangup Webhook -> TaskID: %d, CallUUID: %s, Duration: %ds, Status: %s",
         carrier.upper(),
-        task_id,
+        task_id_int,
         call_uuid,
         duration,
         call_status,
     )
 
-    session_key = f"call:session:{call_uuid}"
-    session_data = await redis_client.hgetall(session_key)
-    history_list = json.loads(session_data.get("history", "[]")) if session_data else []
+    try:
+        session_key = f"call:session:{call_uuid}"
+        session_data = await redis_client.hgetall(session_key)
+        history_list = json.loads(session_data.get("history", "[]")) if session_data else []
 
-    # Calculate final outcome based on explicit carrier/silence status and duration
-    normalized_status = call_status.strip().lower().replace("-", "_") if call_status else None
-    if normalized_status in ["no_answer", "busy", "failed", "canceled"]:
-        computed_outcome = normalized_status
-    elif duration > 5:
-        computed_outcome = "completed"
-    else:
-        computed_outcome = normalized_status or "no_answer"
+        # Calculate final outcome based on explicit carrier/silence status and duration
+        normalized_status = call_status.strip().lower().replace("-", "_") if call_status else None
+        if normalized_status in ["no_answer", "busy", "failed", "canceled"]:
+            computed_outcome = normalized_status
+        elif duration > 5:
+            computed_outcome = "completed"
+        else:
+            computed_outcome = normalized_status or "no_answer"
 
-    # Update database records
-    async with async_session_scope() as session:
-        task_res = await session.execute(select(CallTask).where(CallTask.id == task_id))
-        task = task_res.scalar_one_or_none()
+        # Update database records
+        if task_id_int > 0:
+            async with async_session_scope() as session:
+                task_res = await session.execute(select(CallTask).where(CallTask.id == task_id_int))
+                task = task_res.scalar_one_or_none()
 
-        if task:
-            task.status = "completed" if computed_outcome == "completed" else "failed"
-            task.duration_sec = duration
-            task.outcome = computed_outcome
-            task.ended_at = task.ended_at or task.created_at
+                if task:
+                    task.status = "completed" if computed_outcome == "completed" else "failed"
+                    task.duration_sec = duration
+                    task.outcome = computed_outcome
+                    task.ended_at = task.ended_at or task.created_at
 
-            # Save full transcript log, preserving previous attempts if re-dialed
-            log_res = await session.execute(select(CallLog).where(CallLog.task_id == task_id))
-            call_log = log_res.scalar_one_or_none()
+                    # Save full transcript log, preserving previous attempts if re-dialed
+                    log_res = await session.execute(select(CallLog).where(CallLog.task_id == task_id_int))
+                    call_log = log_res.scalar_one_or_none()
 
-            latencies = [
-                t.get("latency_ms")
-                for t in history_list
-                if isinstance(t, dict) and t.get("latency_ms") and t.get("latency_ms") > 0
-            ]
-            computed_avg_latency = int(sum(latencies) / len(latencies)) if latencies else 0
-
-            if not call_log:
-                active_llm = "groq" if settings.groq_api_key else ("gemini" if settings.gemini_api_key else "qwen3")
-                active_tts = "gtts"
-                active_stt = "twilio_gather" if carrier.lower() == "twilio" else "indic_conformer"
-                call_log = CallLog(
-                    task_id=task_id,
-                    transcript=history_list,
-                    stt_provider=active_stt[:20],
-                    llm_provider=active_llm[:20],
-                    tts_provider=active_tts[:20],
-                    avg_latency_ms=computed_avg_latency or 1500,
-                )
-                session.add(call_log)
-            else:
-                existing_turns = call_log.transcript if isinstance(call_log.transcript, list) else []
-                if existing_turns and history_list:
-                    attempt_num = (task.retry_count or 0) + 1
-                    separator = {
-                        "role": "system",
-                        "content": f"--- Re-dial Attempt #{attempt_num} ---",
-                        "timestamp": utc_now().strftime("%H:%M:%S"),
-                        "latency_ms": 0,
-                    }
-                    call_log.transcript = existing_turns + [separator] + history_list
-                elif history_list:
-                    call_log.transcript = history_list
-
-                all_latencies = [
+                latencies = [
                     t.get("latency_ms")
-                    for t in (call_log.transcript or [])
+                    for t in history_list
                     if isinstance(t, dict) and t.get("latency_ms") and t.get("latency_ms") > 0
                 ]
-                call_log.avg_latency_ms = int(sum(all_latencies) / len(all_latencies)) if all_latencies else computed_avg_latency
+                computed_avg_latency = int(sum(latencies) / len(latencies)) if latencies else 0
 
-    # Delete Redis session context
-    await redis_client.delete(session_key)
+                if not call_log:
+                    active_llm = "groq" if settings.groq_api_key else ("gemini" if settings.gemini_api_key else "qwen3")
+                    active_tts = "gtts"
+                    active_stt = "twilio_gather" if carrier.lower() == "twilio" else "indic_conformer"
+                    call_log = CallLog(
+                        task_id=task_id_int,
+                        transcript=history_list,
+                        stt_provider=active_stt[:20],
+                        llm_provider=active_llm[:20],
+                        tts_provider=active_tts[:20],
+                        avg_latency_ms=computed_avg_latency or 1500,
+                    )
+                    session.add(call_log)
+                else:
+                    existing_turns = call_log.transcript if isinstance(call_log.transcript, list) else []
+                    if existing_turns and history_list:
+                        attempt_num = (task.retry_count or 0) + 1
+                        separator = {
+                            "role": "system",
+                            "content": f"--- Re-dial Attempt #{attempt_num} ---",
+                            "timestamp": utc_now().strftime("%H:%M:%S"),
+                            "latency_ms": 0,
+                        }
+                        call_log.transcript = existing_turns + [separator] + history_list
+                    elif history_list:
+                        call_log.transcript = history_list
 
-    # Broadcast call termination status to WebSocket clients
-    await ws_manager.broadcast(
-        "call_status",
-        {
-            "task_id": task_id,
-            "call_uuid": call_uuid,
-            "carrier": carrier,
-            "status": "completed" if computed_outcome == "completed" else "failed",
-            "duration_sec": duration,
-            "outcome": computed_outcome,
-        },
-    )
+                    all_latencies = [
+                        t.get("latency_ms")
+                        for t in (call_log.transcript or [])
+                        if isinstance(t, dict) and t.get("latency_ms") and t.get("latency_ms") > 0
+                    ]
+                    call_log.avg_latency_ms = int(sum(all_latencies) / len(all_latencies)) if all_latencies else computed_avg_latency
+
+        # Delete Redis session context
+        await redis_client.delete(session_key)
+
+        # Broadcast call termination status to WebSocket clients
+        await ws_manager.broadcast(
+            "call_status",
+            {
+                "task_id": task_id_int,
+                "call_uuid": call_uuid,
+                "carrier": carrier,
+                "status": "completed" if computed_outcome == "completed" else "failed",
+                "duration_sec": duration,
+                "outcome": computed_outcome,
+            },
+        )
+    except Exception as exc:
+        logger.error(
+            "[%s] Hangup Webhook Exception on CallUUID %s: %s",
+            carrier.upper(),
+            call_uuid,
+            exc,
+            exc_info=True,
+        )
 
     if carrier.lower() == "twilio":
         return Response(content="<Response/>", media_type="application/xml")
@@ -980,7 +1151,7 @@ async def _execute_call_hangup(
 @router.api_route("/answer", methods=["GET", "POST"])
 async def handle_plivo_answer(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
 ) -> Response:
     """Triggered by Plivo when the student answers an outbound call."""
     form = {}
@@ -992,9 +1163,10 @@ async def handle_plivo_answer(
     call_uuid = form.get("CallUUID") or request.query_params.get("CallUUID") or ""
     from_number = form.get("From") or request.query_params.get("From") or ""
     to_number = form.get("To") or request.query_params.get("To") or ""
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
 
     return await _execute_call_answer(
-        task_id=task_id,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(call_uuid),
         from_number=str(from_number),
         to_number=str(to_number),
@@ -1005,7 +1177,7 @@ async def handle_plivo_answer(
 @router.api_route("/input", methods=["GET", "POST"])
 async def handle_plivo_input(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
 ) -> Response:
     """
     Triggered by Plivo when student finishes speaking.
@@ -1019,8 +1191,9 @@ async def handle_plivo_input(
             form = {}
     call_uuid = form.get("CallUUID") or request.query_params.get("CallUUID") or ""
     actual_url = form.get("RecordUrl") or form.get("RecordingUrl") or request.query_params.get("RecordUrl")
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
     return await _execute_call_input(
-        task_id=task_id,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(call_uuid),
         raw_record_url=actual_url,
         carrier="plivo",
@@ -1030,9 +1203,9 @@ async def handle_plivo_input(
 @router.api_route("/continue", methods=["GET", "POST"])
 async def handle_plivo_continue(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
     call_uuid: Optional[str] = Query(None, description="Carrier CallUUID"),
-    turn: Optional[int] = Query(None, description="Turn number being continued"),
+    turn: Optional[str] = Query(None, description="Turn number being continued"),
 ) -> Response:
     """Triggered by Plivo <Redirect> after playing filler audio."""
     form = {}
@@ -1042,11 +1215,12 @@ async def handle_plivo_continue(
         except Exception:
             form = {}
     cid = call_uuid or form.get("CallUUID") or request.query_params.get("CallUUID") or ""
-    turn_num = turn or int(form.get("turn") or request.query_params.get("turn") or 1)
+    turn_raw = turn or request.query_params.get("turn") or form.get("turn") or 1
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
     return await _execute_call_continue(
-        task_id=task_id or 0,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(cid),
-        turn=turn_num,
+        turn=_safe_int(turn_raw, default=1),
         carrier="plivo",
     )
 
@@ -1054,7 +1228,7 @@ async def handle_plivo_continue(
 @router.api_route("/hangup", methods=["GET", "POST"])
 async def handle_plivo_hangup(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
 ) -> Response:
     """Triggered by Plivo when the call disconnects."""
     form = {}
@@ -1065,13 +1239,11 @@ async def handle_plivo_hangup(
             form = {}
     call_uuid = form.get("CallUUID") or request.query_params.get("CallUUID") or ""
     duration_raw = form.get("Duration") or request.query_params.get("Duration") or 0
-    try:
-        duration = int(duration_raw)
-    except (ValueError, TypeError):
-        duration = 0
+    duration = _safe_int(duration_raw)
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
 
     return await _execute_call_hangup(
-        task_id=task_id,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(call_uuid),
         duration=duration,
         carrier="plivo",
@@ -1092,7 +1264,7 @@ async def handle_plivo_fallback() -> Response:
 @twilio_router.api_route("/answer", methods=["GET", "POST"])
 async def handle_twilio_answer(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
 ) -> Response:
     """Triggered by Twilio when the student answers an outbound call or when an inbound test call is placed."""
     form = {}
@@ -1108,9 +1280,10 @@ async def handle_twilio_answer(
     )
     from_number = form.get("From") or form.get("Caller") or request.query_params.get("From") or ""
     to_number = form.get("To") or form.get("Called") or request.query_params.get("To") or ""
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
 
     return await _execute_call_answer(
-        task_id=task_id,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(call_sid),
         from_number=str(from_number),
         to_number=str(to_number),
@@ -1121,7 +1294,7 @@ async def handle_twilio_answer(
 @twilio_router.api_route("/input", methods=["GET", "POST"])
 async def handle_twilio_input(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
 ) -> Response:
     """
     Triggered by Twilio when caller finishes speaking following a <Record> directive.
@@ -1145,8 +1318,9 @@ async def handle_twilio_input(
         or request.query_params.get("SpeechResult")
         or None
     )
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
     return await _execute_call_input(
-        task_id=task_id,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(call_sid),
         raw_record_url=recording_url,
         speech_result=speech_result,
@@ -1157,9 +1331,9 @@ async def handle_twilio_input(
 @twilio_router.api_route("/continue", methods=["GET", "POST"])
 async def handle_twilio_continue(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
     call_uuid: Optional[str] = Query(None, description="Twilio CallSid identifier"),
-    turn: Optional[int] = Query(None, description="Turn number being continued"),
+    turn: Optional[str] = Query(None, description="Turn number being continued"),
 ) -> Response:
     """Triggered by Twilio <Redirect> after playing filler audio."""
     form = {}
@@ -1169,11 +1343,12 @@ async def handle_twilio_continue(
         except Exception:
             form = {}
     sid = call_uuid or form.get("CallSid") or request.query_params.get("CallSid") or ""
-    turn_num = turn or int(form.get("turn") or request.query_params.get("turn") or 1)
+    turn_raw = turn or request.query_params.get("turn") or form.get("turn") or 1
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
     return await _execute_call_continue(
-        task_id=task_id or 0,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(sid),
-        turn=turn_num,
+        turn=_safe_int(turn_raw, default=1),
         carrier="twilio",
     )
 
@@ -1181,7 +1356,7 @@ async def handle_twilio_continue(
 @twilio_router.api_route("/hangup", methods=["GET", "POST"])
 async def handle_twilio_hangup(
     request: Request,
-    task_id: Optional[int] = Query(None, description="Internal CallTask primary key"),
+    task_id: Optional[str] = Query(None, description="Internal CallTask primary key"),
 ) -> Response:
     """Triggered by Twilio statusCallback upon call completion."""
     form = {}
@@ -1192,14 +1367,12 @@ async def handle_twilio_hangup(
             form = {}
     call_sid = form.get("CallSid") or request.query_params.get("CallSid") or ""
     call_duration_raw = form.get("CallDuration") or form.get("Duration") or request.query_params.get("Duration") or 0
-    try:
-        actual_duration = int(call_duration_raw)
-    except (ValueError, TypeError):
-        actual_duration = 0
+    actual_duration = _safe_int(call_duration_raw)
     call_status = form.get("CallStatus") or request.query_params.get("CallStatus") or None
+    task_id_raw = task_id or request.query_params.get("task_id") or form.get("task_id")
 
     return await _execute_call_hangup(
-        task_id=task_id,
+        task_id=_safe_int(task_id_raw),
         call_uuid=str(call_sid),
         duration=actual_duration,
         carrier="twilio",

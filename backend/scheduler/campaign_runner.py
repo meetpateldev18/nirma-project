@@ -96,14 +96,6 @@ class CampaignRunner:
             if "lab_batch" in filters and filters["lab_batch"]:
                 query = query.filter(Student.lab_batch == str(filters["lab_batch"]))
 
-            # Standing & Operational Criteria Filters
-            if "max_attendance" in filters and filters["max_attendance"] is not None:
-                query = query.filter(Student.attendance_pct <= float(filters["max_attendance"]))
-            if "min_fee" in filters and filters["min_fee"] is not None:
-                query = query.filter(Student.pending_fee_inr >= float(filters["min_fee"]))
-            if filters.get("has_pending_fee"):
-                query = query.filter(Student.pending_fee_inr > 0)
-
             # Legacy department / semester / language filter backwards compatibility
             if "department" in filters and filters["department"] and "department_id" not in filters:
                 query = query.filter(Student.department == filters["department"])

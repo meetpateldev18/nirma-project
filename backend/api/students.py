@@ -43,6 +43,7 @@ from backend.database.models import (
     Student,
 )
 from backend.database.session import get_async_session, set_rls_session_context
+from backend.services.student_trie import student_trie
 from backend.utils.roll_parser import parse_nirma_roll
 
 logger = logging.getLogger(__name__)
@@ -71,8 +72,6 @@ class StudentSearchResult(BaseModel):
     program_code: Optional[str] = None
     division_code: Optional[str] = None
     lab_batch: Optional[str] = None
-    attendance_pct: Optional[float] = None
-    pending_fee_inr: Optional[float] = None
 
 
 class PaginatedStudents(BaseModel):
@@ -115,22 +114,37 @@ def _map_student(s: Student) -> StudentSearchResult:
         program_code=s.program_rel.code if s.program_rel else None,
         division_code=s.division_rel.code if s.division_rel else None,
         lab_batch=s.lab_batch,
-        attendance_pct=float(s.attendance_pct) if s.attendance_pct is not None else None,
-        pending_fee_inr=float(s.pending_fee_inr) if s.pending_fee_inr is not None else None,
     )
+
+
 def normalize_column_name(col: str) -> str:
     """Strips punctuation and whitespace to compare CSV header aliases uniformly."""
     return re.sub(r"[^a-z0-9]", "", col.strip().lower())
 
 
 def normalize_phone_number(raw_phone: str) -> Optional[str]:
-    """Cleans phone numbers into E.164 compliant format (defaulting to +91)."""
-    digits = re.sub(r"[^\d]", "", raw_phone)
+    """
+    Cleans phone numbers into ITU-T E.164 standard format (e.g. +918866241204).
+    
+    Standardizes:
+        - 10 digits (e.g. 8866241204) -> +918866241204
+        - 11 digits starting with 0 (e.g. 08866241204) -> +918866241204
+        - 12 digits starting with 91 (e.g. 918866241204) -> +918866241204
+        - Strings with +, spaces, hyphens (e.g. +91 88662 41204) -> +918866241204
+        - International numbers with country code (8-15 digits) -> +<digits>
+    """
+    clean = raw_phone.strip()
+    has_plus = clean.startswith("+")
+    digits = re.sub(r"[^\d]", "", clean)
     if not digits:
         return None
     if len(digits) == 10:
         return f"+91{digits}"
+    if len(digits) == 11 and digits.startswith("0"):
+        return f"+91{digits[1:]}"
     if len(digits) == 12 and digits.startswith("91"):
+        return f"+{digits}"
+    if has_plus and 8 <= len(digits) <= 15:
         return f"+{digits}"
     if 10 <= len(digits) <= 15:
         return f"+{digits}"
@@ -142,12 +156,15 @@ def normalize_phone_number(raw_phone: str) -> Optional[str]:
 # ------------------------------------------------------------------------------
 @router.get("/search", response_model=List[StudentSearchResult])
 async def search_students(
-    q: str = Query(..., min_length=2, max_length=100),
+    q: str = Query(..., min_length=1, max_length=100),
     session: AsyncSession = Depends(get_async_session),
     current_user: StaffUser = Depends(get_current_user),
 ) -> List[StudentSearchResult]:
     """
     Matches active students by name, roll number, or phone number.
+
+    Fast path: Uses high-performance in-memory multi-token Trie index (< 1ms).
+    Fallback: Evaluates standard PostgreSQL query if Trie index has not been primed.
 
     Enforces multi-tier Attribute-Based Access Control (ABAC):
     - super_admin / admin: University-wide discovery.
@@ -156,6 +173,15 @@ async def search_students(
     - class_coordinator: Clamped to assigned division.
     - faculty_mentor: Clamped to assigned mentee cohort.
     """
+    # 1. Fast path: In-memory Trie prefix and substring search (< 1ms)
+    try:
+        await student_trie.ensure_loaded(session)
+        trie_results = student_trie.search(query=q, current_user=current_user, limit=10)
+        return [StudentSearchResult(**item) for item in trie_results]
+    except Exception as trie_exc:
+        logger.warning("In-memory Trie search failed; falling back to SQL: %s", trie_exc)
+
+    # 2. Resilient fallback: Database SQL search
     await set_rls_session_context(
         session=session,
         role=current_user.role,
@@ -166,15 +192,6 @@ async def search_students(
         division_id=current_user.division_id,
     )
     term = f"%{q.strip()}%"
-    await set_rls_session_context(
-        session=session,
-        role=current_user.role,
-        user_id=current_user.id,
-        institute_id=current_user.institute_id,
-        department_id=current_user.department_id,
-        program_id=current_user.program_id,
-        division_id=current_user.division_id,
-    )
     stmt = (
         select(Student)
         .options(
@@ -332,12 +349,13 @@ async def list_students(
 async def download_roster_template() -> Response:
     """Returns a pre-formatted sample CSV template for university student roster uploads."""
     sample_csv = (
-        "roll_number,name,phone,alt_phone,division,lab_batch,semester,attendance_pct,pending_fee_inr,language_pref\n"
-        "23BCE045,Aarav Patel,+919876500001,+919876599901,A,A2,6,68.5,0.00,gu\n"
-        "23BCE112,Diya Shah,+919876500002,,B,B1,6,84.0,45000.00,hi\n"
-        "23BAI012,Rohan Mehta,+919876500003,,A,A1,6,92.0,0.00,en\n"
-        "22MBA104,Ananya Desai,+919876500005,,A,,4,95.0,0.00,en\n"
-        "23BME019,Kavya Sharma,+919876500004,,A,,6,72.0,12000.00,hi\n"
+        "roll_number,name,phone,alt_phone,division,lab_batch,semester,language_pref\n"
+        "23BCE078,Gandhi Urva Yogeshkumar,+918866241204,,A,A1,6,en\n"
+        "23BCE045,Aarav Patel,+919876500001,+919876599901,A,A2,6,gu\n"
+        "23BCE112,Diya Shah,+919876500002,,B,B1,6,hi\n"
+        "23BAI012,Rohan Mehta,+919876500003,,A,A1,6,en\n"
+        "22MBA104,Ananya Desai,+919876500005,,A,,4,en\n"
+        "23BME019,Kavya Sharma,+919876500004,,A,,6,hi\n"
     )
     return Response(
         content=sample_csv,
@@ -501,10 +519,6 @@ async def upload_students_csv(
             header_map["division"] = raw_header
         elif norm in ("labbatch", "batch", "practicalbatch"):
             header_map["lab_batch"] = raw_header
-        elif norm in ("attendancepct", "attendance", "attendancepercentage", "attd"):
-            header_map["attendance"] = raw_header
-        elif norm in ("pendingfeeinr", "pendingfee", "feedue", "fee"):
-            header_map["pending_fee"] = raw_header
         elif norm in ("languagepref", "language", "lang", "preferredlanguage"):
             header_map["language"] = raw_header
 
@@ -634,25 +648,11 @@ async def upload_students_csv(
                 divisions_by_batch_code[div_key] = div_obj
             division_id = div_obj.id
 
-        # 6. Parse numeric metrics (semester, attendance, pending fees)
+        # 6. Parse numeric metrics (semester)
         sem_val = None
         if "semester" in header_map and row.get(header_map["semester"]):
             try:
                 sem_val = int(row[header_map["semester"]])
-            except ValueError:
-                pass
-
-        attd_val = 100.0
-        if "attendance" in header_map and row.get(header_map["attendance"]):
-            try:
-                attd_val = float(re.sub(r"[^\d.]", "", row[header_map["attendance"]]))
-            except ValueError:
-                pass
-
-        fee_val = 0.0
-        if "pending_fee" in header_map and row.get(header_map["pending_fee"]):
-            try:
-                fee_val = float(re.sub(r"[^\d.]", "", row[header_map["pending_fee"]]))
             except ValueError:
                 pass
 
@@ -681,8 +681,6 @@ async def upload_students_csv(
                 existing_student.semester = sem_val
             if lab_batch_val:
                 existing_student.lab_batch = lab_batch_val
-            existing_student.attendance_pct = attd_val
-            existing_student.pending_fee_inr = fee_val
             existing_student.language_pref = lang_val
             if inst_obj:
                 existing_student.institute_id = inst_obj.id
@@ -711,8 +709,6 @@ async def upload_students_csv(
                 batch_id=batch_id,
                 division_id=division_id,
                 lab_batch=lab_batch_val,
-                attendance_pct=attd_val,
-                pending_fee_inr=fee_val,
                 is_active=True,
             )
             session.add(new_student)
@@ -746,6 +742,12 @@ async def upload_students_csv(
         updated,
         skipped,
     )
+
+    # Invalidate and refresh in-memory Trie index
+    try:
+        await student_trie.load_from_db(session)
+    except Exception as trie_err:
+        logger.warning("Could not refresh in-memory student trie after roster upload: %s", trie_err)
 
     return RosterIngestionResponse(
         total_rows=total_rows,

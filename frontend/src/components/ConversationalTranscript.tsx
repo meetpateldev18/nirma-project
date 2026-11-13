@@ -103,7 +103,7 @@ export const ConversationalTranscript: React.FC<ConversationalTranscriptProps> =
             variant="outline"
             size="sm"
             onClick={handleCopyTranscript}
-            className="h-8 rounded-full px-3 text-xs"
+            className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-3.5 text-xs"
           >
             {copied ? <Check className="w-3.5 h-3.5 mr-1 text-live-pulse" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
             {copied ? 'Copied' : 'Copy All'}
@@ -150,7 +150,7 @@ export const ConversationalTranscript: React.FC<ConversationalTranscriptProps> =
                 {isAssistant ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
               </div>
 
-              <div className={`max-w-[80%] space-y-1 ${isAssistant ? 'text-left' : 'text-right'}`}>
+              <div className={`max-w-[90%] sm:max-w-[82%] lg:max-w-[78%] space-y-1 ${isAssistant ? 'text-left' : 'text-right'}`}>
                 <div
                   className={`flex items-center gap-1.5 text-[10px] font-mono text-mute px-1 ${
                     isAssistant ? 'justify-start' : 'justify-end'
@@ -190,7 +190,7 @@ export const ConversationalTranscript: React.FC<ConversationalTranscriptProps> =
                 </div>
 
                 <div
-                  className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed border shadow-xs text-left ${
+                  className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed border shadow-xs text-left break-words ${
                     isAssistant
                       ? 'bg-primary/5 border-primary/20 text-ink rounded-tl-sm'
                       : 'bg-white border-hairline text-ink rounded-tr-sm'

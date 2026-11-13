@@ -233,8 +233,6 @@ class Student(Base):
         batch_id: Foreign key referencing the admission cohort batch.
         division_id: Foreign key referencing the class division.
         lab_batch: Practical laboratory batch identifier (e.g. 'A1', 'A2').
-        pending_fee_inr: Outstanding semester fee balance.
-        attendance_pct: Aggregate course attendance percentage.
         whatsapp_number: Optional phone number for automated WhatsApp follow-ups.
         is_active: Status flag indicating whether student is currently enrolled.
         created_at: Record creation timestamp.
@@ -261,8 +259,6 @@ class Student(Base):
     mentor_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("staff_users.id"), nullable=True, index=True)
 
     lab_batch: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
-    pending_fee_inr: Mapped[float] = mapped_column(Numeric(10, 2), default=0.00, nullable=False)
-    attendance_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=100.00, nullable=False)
     whatsapp_number: Mapped[Optional[str]] = mapped_column(String(15), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

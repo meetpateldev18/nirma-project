@@ -203,7 +203,7 @@ function AuthenticatedApp() {
   }, [activeTab]);
 
   return (
-    <div className="min-h-screen bg-canvas text-ink flex flex-col lg:flex-row font-sans antialiased">
+    <div className="min-h-screen bg-canvas text-ink flex flex-col lg:flex-row font-sans antialiased overflow-x-hidden selection:bg-primary/20 selection:text-primary">
       <Toaster position="top-right" richColors />
 
       <Sidebar
@@ -223,123 +223,126 @@ function AuthenticatedApp() {
         systemStatus={systemStatus}
       />
 
-      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-6 lg:py-7 focus:outline-none flex flex-col">
-        {/* Top Header Bar */}
-        <header className="bg-white rounded-2xl border border-hairline shadow-[0_1px_3px_rgba(15,23,42,0.04)] px-5 py-3.5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2 text-[11px] font-mono text-mute tracking-wide uppercase">
-              <span>HPC Mission Control</span>
-              <span className="text-hairline-strong">/</span>
-              <span className="text-primary font-semibold">{activeTabMeta.label}</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-ink font-sans">
-              {activeTabMeta.label}
-            </h1>
-            <p className="text-xs text-body line-clamp-1">
-              {activeTabMeta.desc}
-            </p>
-          </div>
-
-          {/* Right Status & Actions Telemetry */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Live IST Clock */}
-            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-canvas-elevated border border-hairline text-xs font-mono text-ink">
-              <span className="w-1.5 h-1.5 rounded-full bg-telemetry-cyan animate-pulse" />
-              <span className="tabular-nums font-medium">{istTime || 'IST Active'}</span>
+      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 w-full p-4 sm:p-6 lg:p-8 focus:outline-none flex flex-col">
+        {/* Ultrawide Max-Width Container (xl: 1280px / 2xl: 1536px constraint) */}
+        <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col min-w-0">
+          {/* Top Header Bar */}
+          <header className="bg-white rounded-2xl border border-hairline shadow-[0_1px_3px_rgba(15,23,42,0.04)] p-4 sm:px-5 sm:py-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <div className="flex items-center gap-2 text-[11px] font-mono text-mute tracking-wide uppercase">
+                <span>HPC Mission Control</span>
+                <span className="text-hairline-strong">/</span>
+                <span className="text-primary font-semibold">{activeTabMeta.label}</span>
+              </div>
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-ink font-sans truncate">
+                {activeTabMeta.label}
+              </h1>
+              <p className="text-xs sm:text-sm text-body line-clamp-1">
+                {activeTabMeta.desc}
+              </p>
             </div>
 
-            {/* Active Live Calls Count */}
-            {activeCallCount > 0 && activeTab !== 'telemetry' && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('telemetry')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-live-pulse/10 border border-live-pulse/30 text-live-pulse text-xs font-medium hover:bg-live-pulse/20 transition-colors"
-              >
-                <span className="w-2 h-2 rounded-full bg-live-pulse animate-ping" />
-                <span className="tabular-nums font-semibold">{activeCallCount} Live Call{activeCallCount === 1 ? '' : 's'}</span>
-              </button>
-            )}
+            {/* Right Status & Actions Telemetry */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Live IST Clock */}
+              <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-canvas-elevated border border-hairline text-xs font-mono text-ink">
+                <span className="w-1.5 h-1.5 rounded-full bg-telemetry-cyan animate-pulse" />
+                <span className="tabular-nums font-medium">{istTime || 'IST Active'}</span>
+              </div>
 
-            {/* Tab Contextual Actions */}
-            {activeTab === 'dashboard' && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
+              {/* Active Live Calls Count Pill */}
+              {activeCallCount > 0 && activeTab !== 'telemetry' && (
+                <button
+                  type="button"
                   onClick={() => setActiveTab('telemetry')}
-                  className="h-8 rounded-full px-3.5 text-xs border-hairline text-body hover:text-ink"
+                  className="min-h-[44px] sm:min-h-[32px] sm:h-8 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-live-pulse/10 border border-live-pulse/30 text-live-pulse text-xs font-medium hover:bg-live-pulse/20 transition-colors"
                 >
-                  <Clock className="w-3.5 h-3.5 mr-1.5 text-mute" />
-                  Call History
-                </Button>
+                  <span className="w-2 h-2 rounded-full bg-live-pulse animate-ping" />
+                  <span className="tabular-nums font-semibold">{activeCallCount} Live Call{activeCallCount === 1 ? '' : 's'}</span>
+                </button>
+              )}
+
+              {/* Tab Contextual Actions with touch target compliance */}
+              {activeTab === 'dashboard' && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveTab('telemetry')}
+                    className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-4 text-xs border-hairline text-body hover:text-ink"
+                  >
+                    <Clock className="w-3.5 h-3.5 mr-1.5 text-mute" />
+                    Call History
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setActiveTab('campaigns')}
+                    className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-4 text-xs font-semibold bg-primary hover:bg-primary-hover shadow-sm"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
+                    New Call
+                  </Button>
+                </>
+              )}
+
+              {activeTab === 'campaigns' && (
+                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-live-pulse/10 border border-live-pulse/20 text-xs font-mono text-live-pulse">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="font-medium">TRAI 09:00 - 21:00 Regulated</span>
+                </div>
+              )}
+
+              {(activeTab === 'telemetry' || activeTab === 'transcripts' || activeTab === 'users') && (
                 <Button
                   size="sm"
                   onClick={() => setActiveTab('campaigns')}
-                  className="h-8 rounded-full px-4 text-xs font-semibold bg-primary hover:bg-primary-hover shadow-sm"
+                  className="min-h-[44px] sm:min-h-[32px] sm:h-8 rounded-full px-4 text-xs font-semibold bg-primary hover:bg-primary-hover shadow-sm"
                 >
                   <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
                   New Call
                 </Button>
-              </>
-            )}
+              )}
+            </div>
+          </header>
 
-            {activeTab === 'campaigns' && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-live-pulse/10 border border-live-pulse/20 text-xs font-mono text-live-pulse">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="font-medium">TRAI 09:00 - 21:00 Regulated</span>
-              </div>
-            )}
-
-            {(activeTab === 'telemetry' || activeTab === 'transcripts' || activeTab === 'users') && (
-              <Button
-                size="sm"
-                onClick={() => setActiveTab('campaigns')}
-                className="h-8 rounded-full px-4 text-xs font-semibold bg-primary hover:bg-primary-hover shadow-sm"
-              >
-                <PhoneCall className="w-3.5 h-3.5 mr-1.5" />
-                New Call
-              </Button>
-            )}
-          </div>
-        </header>
-
-        {isLoading ? (
-          <ViewFallback />
-        ) : loadError ? (
-          <div className="flex flex-col items-center justify-center min-h-[320px] space-y-2 text-center">
-            <p className="text-sm text-ink font-medium">Could not load data</p>
-            <p className="text-xs text-mute max-w-md">{loadError}</p>
-          </div>
-        ) : (
-          <Suspense fallback={<ViewFallback />}>
-            {activeTab === 'dashboard' && isAdmin && (
-              <DashboardView
-                campaigns={campaigns}
-                summary={summary}
-                volume={volume}
-                outcomes={outcomes}
-                onLaunchNewCampaign={() => setActiveTab('campaigns')}
-                onViewTranscripts={() => setActiveTab('telemetry')}
-              />
-            )}
-            {(activeTab === 'telemetry' || activeTab === 'transcripts') && (
-              <LiveTelemetryView 
-                tasks={tasks} 
-                onSelectTask={() => {}} 
-                onTaskRetried={handleTaskRetried}
-                systemStatus={systemStatus} 
-              />
-            )}
-            {activeTab === 'campaigns' && (
-              <NewCallView
-                onCallLaunched={handleCallLaunched}
-                onNavigateToTelemetry={() => setActiveTab('telemetry')}
-                systemStatus={systemStatus}
-              />
-            )}
-            {activeTab === 'users' && isAdmin && <UsersView />}
-          </Suspense>
-        )}
+          {isLoading ? (
+            <ViewFallback />
+          ) : loadError ? (
+            <div className="flex flex-col items-center justify-center min-h-[320px] space-y-2 text-center p-6">
+              <p className="text-sm text-ink font-medium">Could not load data</p>
+              <p className="text-xs text-mute max-w-md">{loadError}</p>
+            </div>
+          ) : (
+            <Suspense fallback={<ViewFallback />}>
+              {activeTab === 'dashboard' && isAdmin && (
+                <DashboardView
+                  campaigns={campaigns}
+                  summary={summary}
+                  volume={volume}
+                  outcomes={outcomes}
+                  onLaunchNewCampaign={() => setActiveTab('campaigns')}
+                  onViewTranscripts={() => setActiveTab('telemetry')}
+                />
+              )}
+              {(activeTab === 'telemetry' || activeTab === 'transcripts') && (
+                <LiveTelemetryView 
+                  tasks={tasks} 
+                  onSelectTask={() => {}} 
+                  onTaskRetried={handleTaskRetried}
+                  systemStatus={systemStatus} 
+                />
+              )}
+              {activeTab === 'campaigns' && (
+                <NewCallView
+                  onCallLaunched={handleCallLaunched}
+                  onNavigateToTelemetry={() => setActiveTab('telemetry')}
+                  systemStatus={systemStatus}
+                />
+              )}
+              {activeTab === 'users' && isAdmin && <UsersView />}
+            </Suspense>
+          )}
+        </div>
       </main>
     </div>
   );

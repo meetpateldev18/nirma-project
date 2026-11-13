@@ -133,11 +133,11 @@ async def test_student_search_scoping(
     await db_session.commit()
 
     # 1. Operator searches for CSE student
-    cse_search = await async_client.get("/api/students/search?q=Aarav", headers=operator_headers)
+    cse_search = await async_client.get("/api/students/search?q=Urva", headers=operator_headers)
     assert cse_search.status_code == 200
     cse_results = cse_search.json()
     assert len(cse_results) >= 1
-    assert any(s["roll_number"] == "21BCE001" for s in cse_results)
+    assert any(s["roll_number"] == "23BCE078" for s in cse_results)
 
     # 2. Operator searches for Mechanical student (Rohan Mehta 21BME003)
     # The operator is scoped to CSE, so Rohan (ME) must NOT be returned!
@@ -172,9 +172,9 @@ async def test_roster_upload_admin_success(
 ):
     """Verifies that an administrator can bulk-upload students from a CSV spreadsheet."""
     csv_content = (
-        "roll_number,name,phone,division,semester,attendance_pct,pending_fee_inr\n"
-        "23BCE099,Ishaan Dave,+919876599099,A,6,82.5,0.00\n"
-        "23BCE100,Pooja Patel,+919876599100,B,6,74.0,25000.00\n"
+        "roll_number,name,phone,division,semester\n"
+        "23BCE099,Ishaan Dave,+919876599099,A,6\n"
+        "23BCE100,Pooja Patel,+919876599100,B,6\n"
     )
     files = {"file": ("students.csv", csv_content.encode("utf-8"), "text/csv")}
     resp = await async_client.post("/api/students/upload", headers=admin_headers, files=files)
