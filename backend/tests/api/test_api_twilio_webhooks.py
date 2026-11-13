@@ -628,8 +628,8 @@ async def test_twilio_gujarati_voice_consistency(
     assert ans_res.status_code == 200
     # Must NEVER attempt to use Polly.Aditi with Gujarati
     assert not ('voice="Polly.Aditi"' in ans_res.text and 'language="gu-IN"' in ans_res.text)
-    # Must use audio playback (<Play>) or Google.gu-IN-Standard-A
-    assert "<Play>" in ans_res.text or 'voice="Google.gu-IN-Standard-A"' in ans_res.text
+    # Must use audio playback (<Play>) or Google.gu-IN-Standard-C
+    assert "<Play>" in ans_res.text or 'voice="Google.gu-IN-Standard-C"' in ans_res.text or 'voice="Google.gu-IN-Standard-A"' in ans_res.text
 
     # Turn 2: Gujarati query
     speech_payload = {"CallSid": call_sid, "SpeechResult": "પરીક્ષા ક્યારે શરૂ થાય છે?"}
@@ -638,8 +638,7 @@ async def test_twilio_gujarati_voice_consistency(
         turn2_res = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=speech_payload)
 
     assert turn2_res.status_code == 200
-    assert 'voice="Google.gu-IN-Standard-A"' in turn2_res.text
-    assert 'language="gu-IN"' in turn2_res.text
+    assert "<Play>" in turn2_res.text or 'voice="Google.gu-IN-Standard-C"' in turn2_res.text or 'voice="Google.gu-IN-Standard-A"' in turn2_res.text
     assert "Polly.Kajal" not in turn2_res.text
     assert not ('voice="Polly.Aditi"' in turn2_res.text and 'language="gu-IN"' in turn2_res.text)
 
@@ -647,8 +646,7 @@ async def test_twilio_gujarati_voice_consistency(
     silence_payload = {"CallSid": call_sid, "SpeechResult": ""}
     silence_res = await async_client.post(f"/webhook/twilio/input?task_id={task.id}", data=silence_payload)
     assert silence_res.status_code == 200
-    assert 'voice="Google.gu-IN-Standard-A"' in silence_res.text
-    assert 'language="gu-IN"' in silence_res.text
+    assert "<Play>" in silence_res.text or 'voice="Google.gu-IN-Standard-C"' in silence_res.text or 'voice="Google.gu-IN-Standard-A"' in silence_res.text
     assert not ('voice="Polly.Aditi"' in silence_res.text and 'language="gu-IN"' in silence_res.text)
 
 

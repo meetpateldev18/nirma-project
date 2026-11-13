@@ -201,7 +201,7 @@ def _build_twilio_xml_response(
     Strictly enforces single voice persona across the entire call lifecycle:
     - English ('en'): Amazon Polly 'Polly.Aditi' (language="en-IN")
     - Hindi ('hi'): Amazon Polly 'Polly.Aditi' (language="hi-IN")
-    - Gujarati ('gu'): Google Cloud Gujarati Female ('Google.gu-IN-Standard-A', language="gu-IN")
+    - Gujarati ('gu'): Google Cloud Gujarati Female ('Google.gu-IN-Standard-C', language="gu-IN")
 
     Guarantees:
     1. Zero voice switching: Turn 1 greeting, Turn 2+ conversational turns, fillers,
@@ -227,15 +227,10 @@ def _build_twilio_xml_response(
     vr = VoiceResponse()
     lang_normalized = _normalize_lang(language)
 
-    # Strictly prioritize native <Say> over <Play> to eliminate external MP3
-    # download latencies, prevent Cloudflare tunnel HTTP 530/524 timeouts, and ensure the
-    # caller hears the exact same voice persona from the opening greeting to the final hangup.
     if say_text:
         if lang_normalized == "gu":
-            # Amazon Polly does not support Gujarati ('gu-IN'). Passing Polly with gu-IN
-            # triggers Twilio error and falls back to default standard male voice ('man').
-            # We strictly use Google.gu-IN-Standard-A for native Gujarati female text-to-speech.
-            vr.say(say_text, voice="Google.gu-IN-Standard-A", language="gu-IN")
+            # Google Cloud Gujarati Female Standard-C officially supported by Twilio
+            vr.say(say_text, voice="Google.gu-IN-Standard-C", language="gu-IN")
         elif lang_normalized == "hi":
             # Amazon Polly Aditi standard bilingual female voice fluent in Hindi
             vr.say(say_text, voice="Polly.Aditi", language="hi-IN")
@@ -502,6 +497,74 @@ async def _execute_call_answer(
         return Response(content=xml_content, media_type="application/xml")
 
 
+def _detect_call_termination(
+    user_transcript: Optional[str],
+    assistant_reply: str,
+    turn_count: int,
+) -> bool:
+    """
+    Evaluates whether the conversation has reached a natural termination.
+
+    Prevents premature disconnects caused by polite conversational acknowledgements
+    ('thank you', 'thanks', 'aabhar', 'dhanyavaad') during active questioning.
+
+    Args:
+        user_transcript: What the caller just said, if anything.
+        assistant_reply: The assistant's generated response for this turn.
+        turn_count: Current conversational turn counter.
+
+    Returns:
+        bool: True if the call should disconnect, False to continue conversation.
+    """
+    if turn_count >= 10:
+        return True
+
+    assistant_clean = assistant_reply.strip()
+    # Invariant: If assistant is actively posing a question, never hang up!
+    if assistant_clean.endswith("?") or assistant_clean.endswith("？"):
+        return False
+
+    assistant_lower = assistant_clean.lower()
+    user_lower = (user_transcript or "").strip().lower()
+
+    # Explicit terminal farewell phrases (goodbye / parting signoffs)
+    explicit_farewells = [
+        "goodbye",
+        "bye bye",
+        "have a great day",
+        "have a good day",
+        "have a nice day",
+        "take care",
+        "alvida",
+        "આવજો",
+        "बाय बाय",
+        "अलविदा",
+    ]
+
+    # If the assistant explicitly bids farewell without asking a follow-up question
+    if any(fw in assistant_lower for fw in explicit_farewells):
+        return True
+
+    # User terminal farewells (e.g. caller saying goodbye or indicating they have no further questions)
+    user_farewells = [
+        "goodbye",
+        "bye bye",
+        "bye",
+        "alvida",
+        "આવજો",
+        "अलविदा",
+        "that's all",
+        "thats all",
+        "nothing else",
+    ]
+    # Only if user clearly says goodbye AND assistant is not actively probing
+    if any(fw in user_lower.split() or fw in user_lower for fw in user_farewells):
+        if not assistant_clean.endswith("?"):
+            return True
+
+    return False
+
+
 async def _execute_call_input(
     task_id: Optional[Any],
     call_uuid: str,
@@ -731,11 +794,17 @@ async def _execute_call_input(
                 )
 
                 # Output localized filler phrase + <Redirect> to continuation endpoint
-                # For Twilio, native Google.gu-IN-Standard-A or Polly.Aditi synthesizes instantly in TwiML
                 filler_text = FILLER_PROMPTS.get(lang, FILLER_PROMPTS["en"])
+                filler_audio_url = None
+                if carrier.lower() != "twilio":
+                    try:
+                        filler_audio_url = await ai_pipeline.tts.synthesize(text=filler_text, language=lang)
+                    except Exception as f_err:
+                        logger.warning("Filler audio synthesis failed (%s): %s", lang, f_err)
                 continue_url = settings.build_webhook_url(f"/webhook/{carrier}/continue?task_id={task_id_int}&call_uuid={call_uuid}&turn={turn_count}")
                 xml_content = _build_carrier_xml(
                     carrier=carrier,
+                    audio_url=filler_audio_url,
                     say_text=filler_text,
                     redirect_url=continue_url,
                     language=lang,
@@ -798,13 +867,7 @@ async def _execute_call_input(
     # --------------------------------------------------------------------------
     # 6. Check call termination criteria (max 10 turns or explicit goodbye)
     # --------------------------------------------------------------------------
-    goodbye_keywords = [
-        "goodbye", "dhanyavaad", "alvida", "thank you", "thanks", "bye",
-        "આભાર", "ધન્યવાદ", "થેન્ક્યુ", "આવજો", "શુક્રિયા"
-    ]
-    user_said_bye = any(kw in user_transcript.lower() for kw in goodbye_keywords) if user_transcript else False
-    assistant_said_bye = any(kw in assistant_reply.lower() for kw in goodbye_keywords)
-    should_hangup = turn_count >= 10 or user_said_bye or assistant_said_bye
+    should_hangup = _detect_call_termination(user_transcript, assistant_reply, turn_count)
 
     if should_hangup and task_id_int > 0:
         start_time_val = float(session_data.get("start_time", time.time()))
@@ -944,13 +1007,7 @@ async def _execute_call_continue(
             await pipe.execute()
 
         # Check goodbye / termination criteria
-        goodbye_keywords = [
-            "goodbye", "dhanyavaad", "alvida", "thank you", "thanks", "bye",
-            "આભાર", "ધન્યવાદ", "થેન્ક્યુ", "આવજો", "શુક્રિયા"
-        ]
-        user_said_bye = any(kw in user_transcript.lower() for kw in goodbye_keywords) if user_transcript else False
-        assistant_said_bye = any(kw in assistant_reply.lower() for kw in goodbye_keywords)
-        should_hangup = turn_int >= 10 or user_said_bye or assistant_said_bye
+        should_hangup = _detect_call_termination(user_transcript, assistant_reply, turn_int)
 
         if should_hangup and task_id_int > 0:
             start_time_val = float(session_data.get("start_time", time.time()))
