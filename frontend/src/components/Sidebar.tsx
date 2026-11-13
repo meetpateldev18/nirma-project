@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       </a>
 
       {/* ─── MOBILE / TABLET TOP APP BAR (< 1024px) ─── */}
-      <header className="lg:hidden sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-hairline px-4 py-3 flex items-center justify-between">
+      <header className="lg:hidden shrink-0 sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-hairline px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-xs" aria-hidden="true">
             <PhoneCall className="w-4 h-4 text-white" />
@@ -262,10 +262,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
       )}
 
-      {/* ─── DESKTOP PERSISTENT SIDEBAR (lg: 1024px+) ─── */}
-      <aside className="hidden lg:flex lg:w-72 lg:shrink-0 lg:h-screen lg:sticky lg:top-0 flex-col bg-white border-r border-hairline z-30">
+      {/* ─── DESKTOP PERSISTENT FIXED SIDEBAR (lg: 1024px+) ─── */}
+      <aside className="hidden lg:flex lg:w-72 lg:shrink-0 h-full flex-col bg-white border-r border-hairline z-30 select-none overflow-hidden">
         {/* Brand Header */}
-        <div className="flex items-center gap-2.5 px-6 pt-7">
+        <div className="flex items-center gap-2.5 px-6 pt-7 shrink-0">
           <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center shadow-xs" aria-hidden="true">
             <PhoneCall className="w-4 h-4 text-white" />
           </div>
@@ -276,7 +276,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
 
         {/* User Profile Card */}
-        <div className="flex flex-col items-center text-center px-6 pt-8 pb-6">
+        <div className="flex flex-col items-center text-center px-6 pt-8 pb-6 shrink-0">
           <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary-deep text-white text-2xl font-semibold flex items-center justify-center shadow-md">
             {initialsOf(userName)}
           </div>
@@ -294,7 +294,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
         {/* Main Desktop Navigation */}
         <nav
-          className="flex flex-col gap-1.5 px-4 flex-1 overflow-y-auto"
+          className="flex flex-col gap-1.5 px-4 flex-1 overflow-y-auto min-h-0"
           role="tablist"
           aria-label="Main navigation"
         >
@@ -308,7 +308,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 type="button"
                 aria-selected={isActive}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors shrink-0 ${
                   isActive
                     ? 'bg-primary text-white shadow-sm'
                     : 'text-ink hover:bg-canvas-elevated'
@@ -327,7 +327,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </nav>
 
         {/* System Telemetry — Desktop */}
-        <div className="px-4 py-3 mx-4 mb-2 rounded-2xl bg-canvas border border-hairline text-xs font-mono">
+        <div className="px-4 py-3 mx-4 mb-2 rounded-2xl bg-canvas border border-hairline text-xs font-mono shrink-0">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-mute mb-2">
             System Status
           </div>
@@ -361,7 +361,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
 
         {/* Sign out button — Desktop */}
-        <div className="p-4 pt-2">
+        <div className="p-4 pt-2 shrink-0">
           <button
             type="button"
             onClick={onLogout}

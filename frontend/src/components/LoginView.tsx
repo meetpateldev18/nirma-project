@@ -28,7 +28,7 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary via-[#5B82F2] to-[#BCCBFA] flex items-center justify-center px-4 py-8 font-sans antialiased">
+    <div className="h-full w-full overflow-y-auto bg-gradient-to-br from-primary via-[#5B82F2] to-[#BCCBFA] flex items-center justify-center px-4 py-8 font-sans antialiased">
       <div className="w-full max-w-sm space-y-6 bg-white rounded-3xl p-6 sm:p-8 shadow-xl">
         <div className="flex flex-col items-center space-y-2">
           <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">

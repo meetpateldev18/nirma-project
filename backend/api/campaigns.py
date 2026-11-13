@@ -232,46 +232,55 @@ async def create_campaign(
 
     # Automatically dispatch tasks immediately so call dials without delay
     if task_count > 0:
+        c_id = campaign.id
+        s_id = script.id
+        s_opening = script.opening_message
+        s_lang = script.language or "en"
+        s_prompt = script.system_prompt
+
         def _sync_auto_dispatch():
             from backend.scheduler.tasks import place_call_task
             from backend.ai_pipeline.tts import FallbackTTS
             import json
             import redis
 
-            # Pre-synthesize opening audio so it is 100% written on disk before dialing
-            audio_url = ""
             try:
-                audio_url = FallbackTTS().prewarm_sync(script.opening_message, script.language or "en")
-            except Exception as e:
-                logger.warning("Opening audio prewarm error: %s", e)
-
-            with get_sync_session() as sync_db:
-                due_tasks = sync_db.query(CallTask).filter(
-                    CallTask.campaign_id == campaign.id,
-                    CallTask.status == "pending"
-                ).all()
-
-                # Cache task metadata in Redis with TTL=3600 for instant sub-50ms webhook response
+                # Pre-synthesize opening audio so it is 100% written on disk before dialing
+                audio_url = ""
                 try:
-                    r = redis.from_url(settings.redis_url, socket_timeout=3.0)
-                    for dt in due_tasks:
-                        meta_val = json.dumps({
-                            "task_id": dt.id,
-                            "script_id": script.id,
-                            "opening_message": script.opening_message,
-                            "opening_audio_url": audio_url,
-                            "language": script.language or "en",
-                            "system_prompt": script.system_prompt,
-                        })
-                        r.set(f"call:task_meta:{dt.id}", meta_val, ex=3600)
-                except Exception as redis_err:
-                    logger.warning("Task metadata cache warning: %s", redis_err)
+                    audio_url = FallbackTTS().prewarm_sync(s_opening, s_lang)
+                except Exception as e:
+                    logger.warning("Opening audio prewarm error: %s", e)
 
-                for dt in due_tasks:
+                with get_sync_session() as sync_db:
+                    due_tasks = sync_db.query(CallTask).filter(
+                        CallTask.campaign_id == c_id,
+                        CallTask.status == "pending"
+                    ).all()
+
+                    # Cache task metadata in Redis with TTL=3600 for instant sub-50ms webhook response
                     try:
-                        place_call_task(dt.id)
-                    except Exception as err:
-                        logger.error("Auto-dispatch error for task %d: %s", dt.id, err)
+                        r = redis.from_url(settings.redis_url, socket_timeout=3.0)
+                        for dt in due_tasks:
+                            meta_val = json.dumps({
+                                "task_id": dt.id,
+                                "script_id": s_id,
+                                "opening_message": s_opening,
+                                "opening_audio_url": audio_url,
+                                "language": s_lang,
+                                "system_prompt": s_prompt,
+                            })
+                            r.set(f"call:task_meta:{dt.id}", meta_val, ex=3600)
+                    except Exception as redis_err:
+                        logger.warning("Task metadata cache warning: %s", redis_err)
+
+                    for dt in due_tasks:
+                        try:
+                            place_call_task(dt.id)
+                        except Exception as err:
+                            logger.error("Auto-dispatch error for task %d: %s", dt.id, err)
+            except Exception as auto_disp_err:
+                logger.error("Critical auto-dispatch failure for campaign %d: %s", c_id, auto_disp_err)
 
         asyncio.create_task(asyncio.to_thread(_sync_auto_dispatch))
 

@@ -2,6 +2,15 @@
 @config "../tailwind.config.js";
 
 @layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
   body {
     background-color: #F4F4F5;
     color: #1F2430;

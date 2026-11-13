@@ -281,7 +281,13 @@ export const LiveTelemetryView: React.FC<LiveTelemetryViewProps> = React.memo(({
     });
 
     return () => {
-      socket?.close();
+      if (socket) {
+        if (socket.readyState === WebSocket.CONNECTING) {
+          socket.onopen = () => socket.close();
+        } else {
+          socket.close();
+        }
+      }
     };
   }, [systemStatus]);
 

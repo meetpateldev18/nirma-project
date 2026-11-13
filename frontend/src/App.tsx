@@ -203,7 +203,7 @@ function AuthenticatedApp() {
   }, [activeTab]);
 
   return (
-    <div className="min-h-screen bg-canvas text-ink flex flex-col lg:flex-row font-sans antialiased overflow-x-hidden selection:bg-primary/20 selection:text-primary">
+    <div className="h-screen h-[100dvh] w-full bg-canvas text-ink flex flex-col lg:flex-row font-sans antialiased overflow-hidden selection:bg-primary/20 selection:text-primary">
       <Toaster position="top-right" richColors />
 
       <Sidebar
@@ -223,9 +223,13 @@ function AuthenticatedApp() {
         systemStatus={systemStatus}
       />
 
-      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 w-full p-4 sm:p-6 lg:p-8 focus:outline-none flex flex-col">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 min-w-0 w-full h-full overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 focus:outline-none flex flex-col overscroll-contain"
+      >
         {/* Ultrawide Max-Width Container (xl: 1280px / 2xl: 1536px constraint) */}
-        <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col min-w-0">
+        <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col min-w-0 pb-10">
           {/* Top Header Bar */}
           <header className="bg-white rounded-2xl border border-hairline shadow-[0_1px_3px_rgba(15,23,42,0.04)] p-4 sm:px-5 sm:py-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-0.5 min-w-0">
